@@ -1,0 +1,69 @@
+
+const mongoose = require("mongoose");
+
+const maintenanceRequestSchema = new mongoose.Schema(
+  {
+    title: {
+      type: String,
+      required: [true, "Request title is required"],
+      trim: true,
+      maxlength: 100,
+    },
+
+    description: {
+      type: String,
+      required: [true, "Request description is required"],
+      trim: true,
+    },
+
+    category: {
+      type: String,
+      required: [true, "Category is required"],
+      enum: [
+        "Plumbing",
+        "Electrical",
+        "Furniture",
+        "Cleaning",
+        "Other",
+      ],
+    },
+
+    building: {
+      type: String,
+      required: [true, "Building is required"],
+      trim: true,
+    },
+
+    roomNumber: {
+      type: String,
+      required: [true, "Room number is required"],
+      trim: true,
+    },
+
+    priority: {
+      type: String,
+      enum: ["Low", "Medium", "High"],
+      default: "Medium",
+    },
+
+    status: {
+      type: String,
+      enum: [
+        "Pending",
+        "Assigned",
+        "In Progress",
+        "Completed",
+        "Rejected",
+      ],
+      default: "Pending",
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+module.exports = mongoose.model(
+  "MaintenanceRequest",
+  maintenanceRequestSchema
+);
