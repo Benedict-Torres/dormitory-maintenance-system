@@ -106,5 +106,53 @@ app.get("/api/requests/:id", async (req, res) => {
   }
 });
 
+// Update the status of an existing maintenance request in MongoDB.
+app.patch("/api/requests/:id/status", async (req, res) => {
+  try {
+    const { status } = req.body;
+
+    const allowedStatuses = [
+      "Pending",
+      "In Progress",
+      "Completed",
+    ];
+
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        message: "Invalid status. Use Pending, In Progress, or Completed.",
+      });
+    }
+
+    const request = await MaintenanceRequest.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { returnDocument: "after", runValidators: true }
+    );
+
+    if (!request) {
+      return res.status(404).json({
+        message: "Maintenance request not found.",
+      });
+    }
+
+    return res.status(200).json({
+      message: "Maintenance request status updated successfully!",
+      request,
+    });
+  } catch (error) {
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        message: "Invalid maintenance request ID.",
+      });
+    }
+
+    console.error("Error updating request status:", error.message);
+
+    return res.status(500).json({
+      message: "Failed to update maintenance request status.",
+    });
+  }
+});
+
 
 startServer();
