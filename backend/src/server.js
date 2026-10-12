@@ -1,4 +1,4 @@
-
+const MaintenanceRequest = require("./models/MaintenanceRequest");
 require("dotenv").config();
 
 const express = require("express");
@@ -30,5 +30,34 @@ const startServer = async () => {
     process.exit(1);
   }
 };
+
+app.get("/api/test", (req, res) => {
+  res.json({ message: "Dormitory Maintenance API is working!" });
+});
+
+// Add the new POST endpoint below the test endpoint
+app.post("/api/requests", async (req, res) => {
+  try {
+    const request = await MaintenanceRequest.create(req.body);
+
+    return res.status(201).json({
+      message: "Maintenance request created successfully!",
+      request,
+    });
+  } catch (error) {
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        message: "Invalid maintenance request data.",
+        errors: error.message,
+      });
+    }
+
+    console.error("Error creating request:", error.message);
+
+    return res.status(500).json({
+      message: "Failed to create maintenance request.",
+    });
+  }
+});
 
 startServer();
