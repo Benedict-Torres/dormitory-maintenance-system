@@ -22,7 +22,7 @@ const maintenanceRequestSchema = new mongoose.Schema(
       enum: [
         "Plumbing",
         "Electrical",
-        "Furniture",
+        "Carpentry",
         "Cleaning",
         "Other",
       ],

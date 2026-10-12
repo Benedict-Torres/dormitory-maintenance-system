@@ -60,10 +60,51 @@ app.post("/api/requests", async (req, res) => {
   }
 });
 
-// Retrieve all maintenance requests from MongoDB, newest first.
+// Retrieve maintenance requests from MongoDB with optional status and category filters.
 app.get("/api/requests", async (req, res) => {
   try {
-    const requests = await MaintenanceRequest.find()
+    const { status, category } = req.query;
+
+    const allowedStatuses = [
+      "Pending",
+      "In Progress",
+      "Completed",
+    ];
+
+    // Keep these values consistent with the MaintenanceRequest schema.
+    const allowedCategories = [
+      "Plumbing",
+      "Electrical",
+      "Carpentry",
+      "Cleaning",
+      "Other",
+    ];
+
+    if (status && !allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        message: "Invalid status filter.",
+        allowedStatuses,
+      });
+    }
+
+    if (category && !allowedCategories.includes(category)) {
+      return res.status(400).json({
+        message: "Invalid category filter.",
+        allowedCategories,
+      });
+    }
+
+    const filter = {};
+
+    if (status) {
+      filter.status = status;
+    }
+
+    if (category) {
+      filter.category = category;
+    }
+
+    const requests = await MaintenanceRequest.find(filter)
       .sort({ createdAt: -1 });
 
     return res.status(200).json({
@@ -71,7 +112,7 @@ app.get("/api/requests", async (req, res) => {
       requests,
     });
   } catch (error) {
-    console.error("Error retrieving requests:", error.message);
+    console.error("Error retrieving maintenance requests:", error.message);
 
     return res.status(500).json({
       message: "Failed to retrieve maintenance requests.",
