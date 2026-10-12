@@ -195,5 +195,37 @@ app.patch("/api/requests/:id/status", async (req, res) => {
   }
 });
 
+// Delete one maintenance request from MongoDB using its ID.
+app.delete("/api/requests/:id", async (req, res) => {
+  try {
+    const request = await MaintenanceRequest.findByIdAndDelete(
+      req.params.id
+    );
+
+    if (!request) {
+      return res.status(404).json({
+        message: "Maintenance request not found.",
+      });
+    }
+
+    return res.status(200).json({
+      message: "Maintenance request deleted successfully!",
+      request,
+    });
+  } catch (error) {
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        message: "Invalid maintenance request ID.",
+      });
+    }
+
+    console.error("Error deleting maintenance request:", error.message);
+
+    return res.status(500).json({
+      message: "Failed to delete maintenance request.",
+    });
+  }
+});
+
 
 startServer();
