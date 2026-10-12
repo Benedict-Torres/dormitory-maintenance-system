@@ -60,7 +60,7 @@ app.post("/api/requests", async (req, res) => {
   }
 });
 
-
+// Retrieve all maintenance requests from MongoDB, newest first.
 app.get("/api/requests", async (req, res) => {
   try {
     const requests = await MaintenanceRequest.find()
@@ -75,6 +75,33 @@ app.get("/api/requests", async (req, res) => {
 
     return res.status(500).json({
       message: "Failed to retrieve maintenance requests.",
+    });
+  }
+});
+
+// Retrieve one maintenance request from MongoDB using its ID.
+app.get("/api/requests/:id", async (req, res) => {
+  try {
+    const request = await MaintenanceRequest.findById(req.params.id);
+
+    if (!request) {
+      return res.status(404).json({
+        message: "Maintenance request not found.",
+      });
+    }
+
+    return res.status(200).json({ request });
+  } catch (error) {
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        message: "Invalid maintenance request ID.",
+      });
+    }
+
+    console.error("Error retrieving maintenance request:", error.message);
+
+    return res.status(500).json({
+      message: "Failed to retrieve maintenance request.",
     });
   }
 });
