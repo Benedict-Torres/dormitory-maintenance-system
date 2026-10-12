@@ -60,4 +60,24 @@ app.post("/api/requests", async (req, res) => {
   }
 });
 
+
+app.get("/api/requests", async (req, res) => {
+  try {
+    const requests = await MaintenanceRequest.find()
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      count: requests.length,
+      requests,
+    });
+  } catch (error) {
+    console.error("Error retrieving requests:", error.message);
+
+    return res.status(500).json({
+      message: "Failed to retrieve maintenance requests.",
+    });
+  }
+});
+
+
 startServer();
