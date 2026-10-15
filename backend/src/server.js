@@ -164,17 +164,23 @@ app.patch("/api/requests/:id/status", async (req, res) => {
       });
     }
 
-    const request = await MaintenanceRequest.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { returnDocument: "after", runValidators: true }
-    );
+    const request = await MaintenanceRequest.findById(req.params.id);
 
     if (!request) {
       return res.status(404).json({
         message: "Maintenance request not found.",
       });
     }
+
+// Record the status change in the request's activity history.
+    const previousStatus = request.status;
+    request.status = status;
+    request.activityHistory.push({
+      action: "Status Updated",
+      details: `Status changed from ${previousStatus} to ${status}.`,
+      timestamp: new Date(),
+    });
+    await request.save();
 
     return res.status(200).json({
       message: "Maintenance request status updated successfully!",
@@ -238,21 +244,39 @@ app.patch("/api/requests/:id/assign", async (req, res) => {
       });
     }
 
-    const request = await MaintenanceRequest.findByIdAndUpdate(
-      req.params.id,
-      { assignedTo: assignedTo.trim() },
-      { returnDocument: "after", runValidators: true }
-    );
+// Retrieve the request and record the worker assignment in its activity history.
+  const request = await MaintenanceRequest.findById(req.params.id);
 
-    if (!request) {
-      return res.status(404).json({
-        message: "Maintenance request not found.",
-      });
-    }
+  if (!request) {
+    return res.status(404).json({
+    message: "Maintenance request not found.",
+    });
+  }
 
-    return res.status(200).json({
-      message: "Maintenance request assigned successfully!",
-      request,
+  const previousAssignee = request.assignedTo;
+  const newAssignee = assignedTo.trim();
+
+  request.assignedTo = newAssignee;
+
+  request.activityHistory.push({  
+  action: "Request Assigned",
+  details: previousAssignee
+    ? `Assignment changed from ${previousAssignee} to ${newAssignee}.`
+    : `Request assigned to ${newAssignee}.`,
+    timestamp: new Date(),
+  });
+
+  await request.save();
+
+  if (!request) {
+    return res.status(404).json({
+      message: "Maintenance request not found.",
+    });
+  }
+
+  return res.status(200).json({
+    message: "Maintenance request assigned successfully!",
+    request,
     });
   } catch (error) {
     if (error.name === "CastError") {
@@ -260,7 +284,7 @@ app.patch("/api/requests/:id/assign", async (req, res) => {
         message: "Invalid maintenance request ID.",
       });
     }
-
+    
     console.error("Error assigning maintenance request:", error.message);
 
     return res.status(500).json({

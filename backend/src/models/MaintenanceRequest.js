@@ -63,6 +63,26 @@ const maintenanceRequestSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
+    
+// Store a history of important events associated with the maintenance request.
+    activityHistory: [
+      {
+        action: {
+        type: String,
+        required: true,
+      },
+        details: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+    timestamp: {
+      type: Date,
+      default: Date.now,
+      },
+      },
+    ],
+
   },
   {
     timestamps: true,
