@@ -120,29 +120,44 @@ app.get("/api/requests", async (req, res) => {
   }
 });
 
-// Retrieve one maintenance request from MongoDB using its ID.
-app.get("/api/requests/:id", async (req, res) => {
+
+// Retrieve maintenance requests with optional status, category, priority, and text-search filters.
+app.get("/api/requests", async (req, res) => {
   try {
-    const request = await MaintenanceRequest.findById(req.params.id);
+    const { status, category, priority, search } = req.query;
+    const filters = {};
 
-    if (!request) {
-      return res.status(404).json({
-        message: "Maintenance request not found.",
-      });
+    if (status) {
+      filters.status = status;
     }
 
-    return res.status(200).json({ request });
+    if (category) {
+      filters.category = category;
+    }
+
+    if (priority) {
+      filters.priority = priority;
+    }
+
+    if (search && search.trim()) {
+      filters.$or = [
+        { title: { $regex: search.trim(), $options: "i" } },
+        { description: { $regex: search.trim(), $options: "i" } },
+      ];
+    }
+
+    const requests = await MaintenanceRequest.find(filters)
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      count: requests.length,
+      requests,
+    });
   } catch (error) {
-    if (error.name === "CastError") {
-      return res.status(400).json({
-        message: "Invalid maintenance request ID.",
-      });
-    }
-
-    console.error("Error retrieving maintenance request:", error.message);
+    console.error("Error retrieving requests:", error.message);
 
     return res.status(500).json({
-      message: "Failed to retrieve maintenance request.",
+      message: "Failed to retrieve maintenance requests.",
     });
   }
 });
@@ -284,7 +299,7 @@ app.patch("/api/requests/:id/assign", async (req, res) => {
         message: "Invalid maintenance request ID.",
       });
     }
-    
+
     console.error("Error assigning maintenance request:", error.message);
 
     return res.status(500).json({
