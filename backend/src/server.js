@@ -60,55 +60,55 @@ app.post("/api/requests", async (req, res) => {
   }
 });
 
-// Retrieve maintenance requests from MongoDB with optional status and category filters.
+// Retrieve maintenance requests with filtering, text search, and pagination.
 app.get("/api/requests", async (req, res) => {
   try {
-    const { status, category } = req.query;
+    const { status, category, priority, search } = req.query;
 
-    const allowedStatuses = [
-      "Pending",
-      "In Progress",
-      "Completed",
-    ];
+    // Validate pagination parameters and apply safe defaults.
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(
+      100,
+      Math.max(1, Number.parseInt(req.query.limit, 10) || 10)
+    );
+    const skip = (page - 1) * limit;
 
-    // Keep these values consistent with the MaintenanceRequest schema.
-    const allowedCategories = [
-      "Plumbing",
-      "Electrical",
-      "Carpentry",
-      "Cleaning",
-      "Other",
-    ];
-
-    if (status && !allowedStatuses.includes(status)) {
-      return res.status(400).json({
-        message: "Invalid status filter.",
-        allowedStatuses,
-      });
-    }
-
-    if (category && !allowedCategories.includes(category)) {
-      return res.status(400).json({
-        message: "Invalid category filter.",
-        allowedCategories,
-      });
-    }
-
-    const filter = {};
+    const filters = {};
 
     if (status) {
-      filter.status = status;
+      filters.status = status;
     }
 
     if (category) {
-      filter.category = category;
+      filters.category = category;
     }
 
-    const requests = await MaintenanceRequest.find(filter)
-      .sort({ createdAt: -1 });
+    if (priority) {
+      filters.priority = priority;
+    }
+
+    if (search && search.trim()) {
+      filters.$or = [
+        { title: { $regex: search.trim(), $options: "i" } },
+        { description: { $regex: search.trim(), $options: "i" } },
+      ];
+    }
+
+    // Retrieve the requested page and count all matching requests.
+    const [requests, totalRequests] = await Promise.all([
+      MaintenanceRequest.find(filters)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      MaintenanceRequest.countDocuments(filters),
+    ]);
 
     return res.status(200).json({
       count: requests.length,
+      totalRequests,
+      currentPage: page,
+      totalPages: Math.ceil(totalRequests / limit),
+      limit,
       requests,
     });
   } catch (error) {
@@ -119,7 +119,6 @@ app.get("/api/requests", async (req, res) => {
     });
   }
 });
-
 
 // Retrieve maintenance requests with optional status, category, priority, and text-search filters.
 app.get("/api/requests", async (req, res) => {
