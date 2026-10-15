@@ -227,5 +227,47 @@ app.delete("/api/requests/:id", async (req, res) => {
   }
 });
 
+// Assign a maintenance request to a worker and save the assignment in MongoDB.
+app.patch("/api/requests/:id/assign", async (req, res) => {
+  try {
+    const { assignedTo } = req.body;
+
+    if (typeof assignedTo !== "string" || !assignedTo.trim()) {
+      return res.status(400).json({
+        message: "A valid assignee name is required.",
+      });
+    }
+
+    const request = await MaintenanceRequest.findByIdAndUpdate(
+      req.params.id,
+      { assignedTo: assignedTo.trim() },
+      { returnDocument: "after", runValidators: true }
+    );
+
+    if (!request) {
+      return res.status(404).json({
+        message: "Maintenance request not found.",
+      });
+    }
+
+    return res.status(200).json({
+      message: "Maintenance request assigned successfully!",
+      request,
+    });
+  } catch (error) {
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        message: "Invalid maintenance request ID.",
+      });
+    }
+
+    console.error("Error assigning maintenance request:", error.message);
+
+    return res.status(500).json({
+      message: "Failed to assign maintenance request.",
+    });
+  }
+});
+
 
 startServer();

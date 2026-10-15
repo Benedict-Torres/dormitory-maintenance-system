@@ -57,6 +57,12 @@ const maintenanceRequestSchema = new mongoose.Schema(
       ],
       default: "Pending",
     },
+
+    assignedTo: {
+      type: String,
+      trim: true,
+      default: null,
+    },
   },
   {
     timestamps: true,
