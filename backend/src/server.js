@@ -306,6 +306,34 @@ app.patch("/api/requests/:id/assign", async (req, res) => {
     });
   }
 });
+// Retrieve summary counts for the maintenance dashboard.
+app.get("/api/requests/summary", async (req, res) => {
+  try {
+    const [
+      totalRequests,
+      pendingRequests,
+      inProgressRequests,
+      completedRequests,
+    ] = await Promise.all([
+      MaintenanceRequest.countDocuments(),
+      MaintenanceRequest.countDocuments({ status: "Pending" }),
+      MaintenanceRequest.countDocuments({ status: "In Progress" }),
+      MaintenanceRequest.countDocuments({ status: "Completed" }),
+    ]);
 
+    return res.status(200).json({
+      totalRequests,
+      pendingRequests,
+      inProgressRequests,
+      completedRequests,
+    });
+  } catch (error) {
+    console.error("Error retrieving request summary:", error.message);
+
+    return res.status(500).json({
+      message: "Failed to retrieve maintenance request summary.",
+    });
+  }
+});
 
 startServer();
