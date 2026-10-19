@@ -3,6 +3,7 @@ require("dotenv").config();
 // Import the user model and password-hashing library for registration.
 const User = require("./models/User");
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const express = require("express");
 const cors = require("cors");
 const connectDB = require("./config/database");
@@ -399,6 +400,66 @@ app.post("/api/auth/register", async (req, res) => {
 
     return res.status(500).json({
       message: "Failed to register account.",
+    });
+  }
+});
+
+ // Log in a registered user and issue a JWT after verifying their credentials.
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Validate the required login fields.
+    if (
+      typeof email !== "string" ||
+      !email.trim() ||
+      typeof password !== "string" ||
+      !password
+    ) {
+      return res.status(400).json({
+        message: "Email and password are required.",
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Find the account associated with the supplied email.
+    const user = await User.findOne({ email: normalizedEmail });
+
+    // Use the same response for unknown emails and incorrect passwords.
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({
+        message: "Invalid email or password.",
+      });
+    }
+
+    // Generate a signed token using the secret stored in the environment.
+    const token = jwt.sign(
+      {
+        userId: user._id.toString(),
+        role: user.role,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+
+    // Return the token and safe account details to the client.
+    return res.status(200).json({
+      message: "Login successful.",
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    // Log unexpected errors and return a generic server response.
+    console.error("Error logging in:", error.message);
+
+    return res.status(500).json({
+      message: "Failed to log in.",
     });
   }
 });
