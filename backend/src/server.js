@@ -1,6 +1,8 @@
 const MaintenanceRequest = require("./models/MaintenanceRequest");
 require("dotenv").config();
-
+// Import the user model and password-hashing library for registration.
+const User = require("./models/User");
+const bcrypt = require("bcryptjs");
 const express = require("express");
 const cors = require("cors");
 const connectDB = require("./config/database");
@@ -332,6 +334,71 @@ app.get("/api/requests/summary", async (req, res) => {
 
     return res.status(500).json({
       message: "Failed to retrieve maintenance request summary.",
+    });
+  }
+});
+
+ // Register a resident account after validating input and hashing the password.
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    // Validate required registration fields.
+    if (
+      typeof name !== "string" ||
+      !name.trim() ||
+      typeof email !== "string" ||
+      !email.trim() ||
+      typeof password !== "string" ||
+      password.length < 8
+    ) {
+      return res.status(400).json({
+        message:
+          "Name, a valid email, and a password of at least 8 characters are required.",
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Check whether the email is already registered.
+    const existingUser = await User.findOne({ email: normalizedEmail });
+
+    if (existingUser) {
+      return res.status(409).json({
+        message: "An account with this email already exists.",
+      });
+    }
+
+    // Hash the password and create the account with the default Resident role.
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    const user = await User.create({
+      name: name.trim(),
+      email: normalizedEmail,
+      password: hashedPassword,
+    });
+
+    return res.status(201).json({
+      message: "Resident account created successfully.",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    // Handle duplicate-email conflicts and unexpected registration errors.
+    if (error.code === 11000) {
+      return res.status(409).json({
+        message: "An account with this email already exists.",
+      });
+    }
+
+    console.error("Error registering user:", error.message);
+
+    return res.status(500).json({
+      message: "Failed to register account.",
     });
   }
 });
