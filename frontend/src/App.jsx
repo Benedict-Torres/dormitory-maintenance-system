@@ -1,10 +1,8 @@
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Activity,
-  ArrowDownRight,
   ArrowRight,
-  ArrowUpRight,
   Bell,
   Building2,
   CheckCircle2,
@@ -24,124 +22,160 @@ import {
 } from 'lucide-react'
 import './App.css'
 
-// Temporary dashboard figures for UI development.
-// We will replace these sample values with API data in a later milestone.
-const summaryCards = [
+// Use the configured backend URL, with a local development fallback.
+const API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+).replace(/\/$/, '')
+
+// Define the summary cards and their matching icons and descriptions.
+const summaryCardConfig = [
   {
     title: 'Total Requests',
-    value: '128',
     detail: 'All maintenance requests',
     icon: ClipboardList,
     tone: 'blue',
-    trend: '+12%',
-    trendDirection: 'up',
   },
   {
     title: 'Pending',
-    value: '24',
     detail: 'Waiting for review',
     icon: Clock3,
     tone: 'orange',
-    trend: 'Needs review',
-    trendDirection: 'down',
   },
   {
     title: 'In Progress',
-    value: '18',
     detail: 'Currently being handled',
     icon: Wrench,
     tone: 'purple',
-    trend: 'Active work',
-    trendDirection: 'up',
   },
   {
     title: 'Completed',
-    value: '86',
     detail: 'Successfully resolved',
     icon: CheckCircle2,
     tone: 'green',
-    trend: '+8%',
-    trendDirection: 'up',
   },
 ]
 
-// Sample requests are for layout testing only, not real resident records.
-const sampleRequests = [
-  {
-    id: 'DM-1028',
-    title: 'Leaking bathroom faucet',
-    location: 'Room 204 · Building A',
-    category: 'Plumbing',
-    priority: 'High',
-    status: 'In Progress',
-    date: 'Oct 19, 2026',
-    resident: 'Alex Morgan',
-  },
-  {
-    id: 'DM-1027',
-    title: 'Broken ceiling light',
-    location: 'Room 115 · Building B',
-    category: 'Electrical',
-    priority: 'Medium',
-    status: 'Pending',
-    date: 'Oct 19, 2026',
-    resident: 'Jamie Lee',
-  },
-  {
-    id: 'DM-1026',
-    title: 'Air conditioner not cooling',
-    location: 'Room 310 · Building A',
-    category: 'HVAC',
-    priority: 'High',
-    status: 'In Progress',
-    date: 'Oct 18, 2026',
-    resident: 'Taylor Reed',
-  },
-  {
-    id: 'DM-1025',
-    title: 'Damaged study desk',
-    location: 'Room 022 · Building C',
-    category: 'Furniture',
-    priority: 'Low',
-    status: 'Completed',
-    date: 'Oct 17, 2026',
-    resident: 'Jordan Blake',
-  },
-  {
-    id: 'DM-1024',
-    title: 'Slow drainage',
-    location: 'Room 208 · Building B',
-    category: 'Plumbing',
-    priority: 'Medium',
-    status: 'Pending',
-    date: 'Oct 16, 2026',
-    resident: 'Casey Taylor',
-  },
-]
+// Format database timestamps into a readable date for the dashboard.
+function formatDate(dateValue) {
+  if (!dateValue) return 'Date unavailable'
+
+  const date = new Date(dateValue)
+
+  if (Number.isNaN(date.getTime())) return 'Date unavailable'
+
+  return new Intl.DateTimeFormat('en-PH', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(date)
+}
 
 // Reusable badge component keeps request status and priority styling consistent.
 function StatusBadge({ value }) {
-  const className = value.toLowerCase().replaceAll(' ', '-')
+  const className = String(value || 'Unknown')
+    .toLowerCase()
+    .replaceAll(' ', '-')
 
-  return <span className={`status-badge ${className}`}>{value}</span>
+  return <span className={`status-badge ${className}`}>{value || 'Unknown'}</span>
 }
 
-// Main dashboard layout with temporary navigation and sample maintenance data.
+// Main dashboard loads maintenance requests and summary figures from Express.
 function App() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('All Statuses')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeNav, setActiveNav] = useState('Dashboard')
 
-  // Filter the sample table by request details and selected status.
-  const filteredRequests = sampleRequests.filter((request) => {
+  const [requests, setRequests] = useState([])
+  const [summary, setSummary] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [apiError, setApiError] = useState('')
+
+  // Fetch real maintenance records and statistics when the dashboard loads.
+  useEffect(() => {
+    const controller = new AbortController()
+
+    async function loadDashboardData() {
+      setLoading(true)
+      setApiError('')
+
+      try {
+        const [requestsResponse, summaryResponse] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/requests?limit=100`, {
+            signal: controller.signal,
+          }),
+          fetch(`${API_BASE_URL}/api/requests/summary`, {
+            signal: controller.signal,
+          }),
+        ])
+
+        if (!requestsResponse.ok || !summaryResponse.ok) {
+          throw new Error(
+            'The backend could not provide dashboard data. Check that the API is running.',
+          )
+        }
+
+        const requestsData = await requestsResponse.json()
+        const summaryData = await summaryResponse.json()
+
+        if (!Array.isArray(requestsData.requests)) {
+          throw new Error('The maintenance requests response has an unexpected format.')
+        }
+
+        setRequests(requestsData.requests)
+        setSummary(summaryData)
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          setApiError(
+            error.message ||
+              'Unable to connect to the backend. Check your server and network settings.',
+          )
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadDashboardData()
+
+    return () => controller.abort()
+  }, [])
+
+  // Calculate the displayed summary cards from the backend response.
+  const summaryCards = summary
+    ? summaryCardConfig.map((card, index) => {
+        const values = [
+          summary.totalRequests,
+          summary.pendingRequests,
+          summary.inProgressRequests,
+          summary.completedRequests,
+        ]
+
+        return {
+          ...card,
+          value: values[index] ?? 0,
+        }
+      })
+    : summaryCardConfig.map((card) => ({ ...card, value: '—' }))
+
+  // Search real request fields and apply the selected status filter.
+  const filteredRequests = requests.filter((request) => {
+    const requestId = request._id || request.id || ''
+
     const searchableText = [
-      request.id,
+      requestId,
       request.title,
-      request.location,
+      request.description,
+      request.building,
+      request.roomNumber,
       request.category,
-      request.resident,
+      request.priority,
+      request.status,
+      request.assignedTo,
     ]
+      .filter(Boolean)
       .join(' ')
       .toLowerCase()
 
@@ -203,7 +237,9 @@ function App() {
                 <Icon size={19} />
                 <span>{label}</span>
                 {label === 'Maintenance Requests' && (
-                  <span className="nav-count">24</span>
+                  <span className="nav-count">
+                    {summary?.pendingRequests ?? '—'}
+                  </span>
                 )}
               </button>
             ))}
@@ -232,7 +268,10 @@ function App() {
             <p>Contact your dormitory administrator for help.</p>
           </div>
 
-          <button className="profile-row" onClick={() => handleNavigation('Profile')}>
+          <button
+            className="profile-row"
+            onClick={() => handleNavigation('Profile')}
+          >
             <div className="avatar avatar-blue">AD</div>
             <div className="profile-copy">
               <strong>Admin Demo</strong>
@@ -263,9 +302,12 @@ function App() {
           <div className="topbar-right">
             <div className="system-status">
               <span className="status-dot" />
-              System operational
+              {apiError ? 'Connection issue' : 'System operational'}
             </div>
-            <button className="icon-button notification-button" aria-label="Notifications">
+            <button
+              className="icon-button notification-button"
+              aria-label="Notifications"
+            >
               <Bell size={20} />
               <span className="notification-dot" />
             </button>
@@ -286,7 +328,9 @@ function App() {
                 <Activity size={15} />
                 DORMITORY OVERVIEW
               </div>
-              <h1>Good day, Admin! <span>👋</span></h1>
+              <h1>
+                Good day, Admin! <span>👋</span>
+              </h1>
               <p>Here&apos;s what&apos;s happening with your dormitory today.</p>
             </div>
             <button
@@ -298,11 +342,20 @@ function App() {
             </button>
           </section>
 
+          {apiError && (
+            <div className="empty-state" role="alert">
+              <strong>Unable to load dashboard data</strong>
+              <p>{apiError}</p>
+              <p>
+                Confirm that MongoDB and the Express server are running, then
+                refresh this page.
+              </p>
+            </div>
+          )}
+
           <section className="summary-grid" aria-label="Maintenance summary">
             {summaryCards.map((card) => {
               const Icon = card.icon
-              const TrendIcon =
-                card.trendDirection === 'down' ? ArrowDownRight : ArrowUpRight
 
               return (
                 <article className="summary-card" key={card.title}>
@@ -310,10 +363,6 @@ function App() {
                     <div className={`summary-icon icon-${card.tone}`}>
                       <Icon size={21} />
                     </div>
-                    <span className={`summary-trend trend-${card.trendDirection}`}>
-                      {card.trendDirection === 'up' && <TrendIcon size={14} />}
-                      {card.trend}
-                    </span>
                   </div>
                   <p className="summary-title">{card.title}</p>
                   <div className="summary-value">{card.value}</div>
@@ -358,8 +407,10 @@ function App() {
                 >
                   <option>All Statuses</option>
                   <option>Pending</option>
+                  <option>Assigned</option>
                   <option>In Progress</option>
                   <option>Completed</option>
+                  <option>Rejected</option>
                 </select>
               </label>
             </div>
@@ -369,49 +420,91 @@ function App() {
                 <thead>
                   <tr>
                     <th>REQUEST</th>
-                    <th>RESIDENT</th>
+                    <th>LOCATION</th>
+                    <th>ASSIGNED PERSONNEL</th>
                     <th>PRIORITY</th>
                     <th>STATUS</th>
                     <th>DATE SUBMITTED</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRequests.map((request) => (
-                    <tr key={request.id}>
-                      <td>
-                        <div className="request-title">{request.title}</div>
-                        <div className="request-meta">
-                          {request.id} <span>·</span> {request.location}
-                        </div>
-                      </td>
-                      <td>
-                        <div className="resident-cell">
-                          <div className="avatar avatar-light">
-                            {request.resident
-                              .split(' ')
-                              .map((part) => part[0])
-                              .join('')}
+                  {filteredRequests.map((request) => {
+                    const requestId = request._id || request.id
+
+                    return (
+                      <tr key={requestId}>
+                        <td>
+                          <div className="request-title">
+                            {request.title || 'Untitled request'}
                           </div>
-                          <span>{request.resident}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <StatusBadge value={request.priority} />
-                      </td>
-                      <td>
-                        <StatusBadge value={request.status} />
-                      </td>
-                      <td className="date-cell">{request.date}</td>
-                    </tr>
-                  ))}
+                          <div className="request-meta">
+                            #{String(requestId).slice(-6).toUpperCase()}
+                            {request.category && (
+                              <>
+                                <span> · </span>
+                                {request.category}
+                              </>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          <div className="request-title">
+                            {request.building || 'Building unavailable'}
+                          </div>
+                          <div className="request-meta">
+                            Room {request.roomNumber || '—'}
+                          </div>
+                        </td>
+                        {/* Show the assigned personnel, or a fallback when nobody is assigned. */}
+                        <td>
+                          <div className="resident-cell">
+                            <div className="avatar avatar-light">
+                             {request.assignedTo
+                              ? request.assignedTo
+                                .split(' ')
+                                .map((part) => part[0])
+                                .join('')
+                                .toUpperCase()
+                              : '—'}
+                            </div>
+                            <span>{request.assignedTo || 'Unassigned'}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <StatusBadge value={request.priority} />
+                        </td>
+                        <td>
+                          <StatusBadge value={request.status} />
+                        </td>
+                        <td className="date-cell">
+                          {formatDate(request.createdAt)}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
 
-              {filteredRequests.length === 0 && (
+              {loading && (
+                <div className="empty-state" role="status">
+                  <strong>Loading maintenance requests...</strong>
+                  <p>Connecting to the dormitory maintenance API.</p>
+                </div>
+              )}
+
+              {!loading && !apiError && filteredRequests.length === 0 && (
                 <div className="empty-state">
                   <Search size={25} />
-                  <strong>No matching requests</strong>
-                  <p>Try another search term or status filter.</p>
+                  <strong>
+                    {requests.length === 0
+                      ? 'No maintenance requests yet'
+                      : 'No matching requests'}
+                  </strong>
+                  <p>
+                    {requests.length === 0
+                      ? 'Requests saved through the API will appear here.'
+                      : 'Try another search term or status filter.'}
+                  </p>
                 </div>
               )}
             </div>
@@ -419,9 +512,11 @@ function App() {
             <div className="table-footer">
               <span>
                 Showing <strong>{filteredRequests.length}</strong> of{' '}
-                <strong>{sampleRequests.length}</strong> sample requests
+                <strong>{requests.length}</strong> loaded requests
               </span>
-              <span className="sample-note">Demo data</span>
+              <span className="sample-note">
+                {loading ? 'Loading data' : apiError ? 'API unavailable' : 'Live API data'}
+              </span>
             </div>
           </section>
 
