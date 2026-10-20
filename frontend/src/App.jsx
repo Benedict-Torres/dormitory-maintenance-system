@@ -84,7 +84,250 @@ function StatusBadge({ value }) {
 }
 
 // Main dashboard loads maintenance requests and summary figures from Express.
+
+ // Handle the maintenance request form, validation, and API submission.
+function RequestFormModal({ onClose, onCreated }) {
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    category: '',
+    building: '',
+    roomNumber: '',
+    priority: 'Medium',
+  })
+  const [submitting, setSubmitting] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
+
+  // Update the field that the user changes in the form.
+  function handleChange(event) {
+    const { name, value } = event.target
+
+    setFormData((current) => ({
+      ...current,
+      [name]: value,
+    }))
+  }
+
+  // Validate the form and save the request through the existing Express API.
+  async function handleSubmit(event) {
+    event.preventDefault()
+    setErrorMessage('')
+    setSuccessMessage('')
+
+    const cleanedData = Object.fromEntries(
+      Object.entries(formData).map(([key, value]) => [
+        key,
+        value.trim(),
+      ]),
+    )
+
+    if (
+      !cleanedData.title ||
+      !cleanedData.description ||
+      !cleanedData.category ||
+      !cleanedData.building ||
+      !cleanedData.roomNumber
+    ) {
+      setErrorMessage('Please complete all required fields.')
+      return
+    }
+
+    if (cleanedData.title.length > 100) {
+      setErrorMessage('The request title must not exceed 100 characters.')
+      return
+    }
+
+    setSubmitting(true)
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/requests`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(cleanedData),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(
+          result.message || 'Unable to submit the maintenance request.',
+        )
+      }
+
+      setSuccessMessage('Request submitted successfully!')
+      setFormData({
+        title: '',
+        description: '',
+        category: '',
+        building: '',
+        roomNumber: '',
+        priority: 'Medium',
+      })
+
+      // Refresh the dashboard after the backend confirms creation.
+      onCreated()
+    } catch (error) {
+      setErrorMessage(
+        error.message || 'Unable to connect to the maintenance API.',
+      )
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div
+      className="request-modal-overlay"
+      onClick={onClose}
+    >
+      <section
+        className="request-modal request-form-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="request-form-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="request-modal-header">
+          <div>
+            <p className="request-modal-eyebrow">DORMCARE PORTAL</p>
+            <h2 id="request-form-title">Submit a Maintenance Request</h2>
+            <p className="request-meta">
+              Describe the issue in your dormitory.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            className="request-modal-close"
+            onClick={onClose}
+            aria-label="Close request form"
+          >
+            ×
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="request-form-body">
+            <label className="request-form-field">
+              Request title *
+              <input
+                name="title"
+                value={formData.title}
+                onChange={handleChange}
+                maxLength={100}
+                required
+                placeholder="e.g. Leaking bathroom faucet"
+              />
+            </label>
+
+            <label className="request-form-field">
+              Description *
+              <textarea
+                name="description"
+                value={formData.description}
+                onChange={handleChange}
+                required
+                rows={4}
+                placeholder="Explain the issue and any relevant details."
+              />
+            </label>
+
+            <div className="request-form-grid">
+              <label className="request-form-field">
+                Category *
+                <select
+                  name="category"
+                  value={formData.category}
+                  onChange={handleChange}
+                  required
+                >
+                  <option value="">Select category</option>
+                  <option value="Plumbing">Plumbing</option>
+                  <option value="Electrical">Electrical</option>
+                  <option value="Carpentry">Carpentry</option>
+                  <option value="Cleaning">Cleaning</option>
+                  <option value="Other">Other</option>
+                </select>
+              </label>
+
+              <label className="request-form-field">
+                Priority
+                <select
+                  name="priority"
+                  value={formData.priority}
+                  onChange={handleChange}
+                >
+                  <option value="Low">Low</option>
+                  <option value="Medium">Medium</option>
+                  <option value="High">High</option>
+                </select>
+              </label>
+
+              <label className="request-form-field">
+                Building *
+                <input
+                  name="building"
+                  value={formData.building}
+                  onChange={handleChange}
+                  required
+                  placeholder="e.g. Building A"
+                />
+              </label>
+
+              <label className="request-form-field">
+                Room number *
+                <input
+                  name="roomNumber"
+                  value={formData.roomNumber}
+                  onChange={handleChange}
+                  required
+                  placeholder="e.g. 204"
+                />
+              </label>
+            </div>
+
+            {errorMessage && (
+              <p className="request-form-message error" role="alert">
+                {errorMessage}
+              </p>
+            )}
+
+            {successMessage && (
+              <p className="request-form-message success" role="status">
+                {successMessage}
+              </p>
+            )}
+          </div>
+
+          <div className="request-modal-footer request-form-footer">
+            <button
+              type="button"
+              className="request-form-cancel"
+              onClick={onClose}
+              disabled={submitting}
+            >
+              Close
+            </button>
+
+            <button
+              type="submit"
+              className="request-modal-done"
+              disabled={submitting}
+            >
+              {submitting ? 'Submitting...' : 'Submit Request'}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  )
+}
+
 function App() {
+  const [refreshKey, setRefreshKey] = useState(0)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('All Statuses')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -145,7 +388,7 @@ function App() {
     loadDashboardData()
 
     return () => controller.abort()
-  }, [])
+  }, [refreshKey])
 
   // Close the request details modal when the user presses Escape.
   useEffect(() => {
@@ -656,7 +899,10 @@ function App() {
         <button
           type="button"
           className="request-modal-done"
-          onClick={() => setSelectedRequest(null)}
+          onClick={() => {
+            setSelectedRequest(null);
+            setRefreshKey((prev) => prev + 1);
+          }}
         >
           Close
         </button>
@@ -664,8 +910,14 @@ function App() {
     </section>
   </div>
 )}
-
-    </div>
+{/* Show the submission form when the user opens Submit a Request. */}
+      {activeNav === 'Submit a Request' && (
+        <RequestFormModal
+          onClose={() => setActiveNav('Dashboard')}
+          onCreated={() => setRefreshKey((current) => current + 1)}
+        />
+      )}
+  </div>
   )
 }
 

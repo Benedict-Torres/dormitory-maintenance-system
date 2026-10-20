@@ -1257,3 +1257,116 @@ button:focus-visible {
     gap: 18px;
   }
 }
+
+/* Lay out the maintenance request form fields with consistent spacing. */
+.request-form-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px;
+}
+
+/* Keep form labels and their controls aligned and easy to read. */
+.request-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Apply consistent styling to the form inputs, dropdowns, and description. */
+.request-form-field input,
+.request-form-field select,
+.request-form-field textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid #dbe2ea;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1e293b;
+  font: inherit;
+  font-weight: 400;
+}
+
+.request-form-field textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.request-form-field input:focus,
+.request-form-field select:focus,
+.request-form-field textarea:focus {
+  outline: 2px solid #4263eb;
+  outline-offset: 1px;
+  border-color: #4263eb;
+}
+
+/* Display category, priority, building, and room in two columns. */
+.request-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 16px;
+}
+
+/* Keep success and error feedback visible inside the form. */
+.request-form-message {
+  margin: 0;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.request-form-message.error {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.request-form-message.success {
+  background: #f0fdf4;
+  color: #166534;
+}
+
+/* Align form actions and visually distinguish the secondary close action. */
+.request-form-footer {
+  gap: 12px;
+}
+
+.request-form-cancel {
+  padding: 10px 20px;
+  border: 1px solid #dbe2ea;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.request-form-cancel:hover {
+  background: #f8fafc;
+}
+
+.request-form-cancel:disabled,
+.request-modal-done:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Stack form fields on narrow mobile screens. */
+@media (max-width: 480px) {
+  .request-form-body {
+    padding: 18px;
+  }
+
+  .request-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .request-form-footer {
+    flex-wrap: wrap;
+  }
+}
