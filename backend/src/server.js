@@ -7,6 +7,7 @@ const jwt = require("jsonwebtoken");
 const express = require("express");
 const cors = require("cors");
 const connectDB = require("./config/database");
+const maintenanceTeam = require("./data/maintenanceTeam");
 
 const app = express();
 
@@ -16,6 +17,13 @@ app.use(express.json());
 // Test endpoint
 app.get("/api/test", (req, res) => {
   res.json({ message: "Dormitory Maintenance API is working!" });
+});
+
+app.get("/api/maintenance-team", (req, res) => {
+  res.status(200).json({
+    count: maintenanceTeam.length,
+    employees: maintenanceTeam,
+  });
 });
 
 // Start the server only after MongoDB connects
@@ -164,6 +172,112 @@ app.get("/api/requests", async (req, res) => {
   }
 });
 
+// Delete one maintenance request from MongoDB using its ID.
+app.delete("/api/requests/:id", async (req, res) => {
+  try {
+    const request = await MaintenanceRequest.findByIdAndDelete(
+      req.params.id
+    );
+
+    if (!request) {
+      return res.status(404).json({
+        message: "Maintenance request not found.",
+      });
+    }
+
+    return res.status(200).json({
+      message: "Maintenance request deleted successfully!",
+      request,
+    });
+  } catch (error) {
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        message: "Invalid maintenance request ID.",
+      });
+    }
+
+    console.error("Error deleting maintenance request:", error.message);
+
+    return res.status(500).json({
+      message: "Failed to delete maintenance request.",
+    });
+  }
+});
+
+/* Assign a request only to an employee qualified for its maintenance category. */
+app.patch("/api/requests/:id/assign", async (req, res) => {
+  try {
+    const { assignedTo } = req.body;
+
+    // Require an employee ID from the maintenance team directory.
+    if (typeof assignedTo !== "string" || !assignedTo.trim()) {
+      return res.status(400).json({
+        message: "A valid maintenance employee ID is required.",
+      });
+    }
+
+    // Retrieve the request before validating the employee's qualifications.
+    const request = await MaintenanceRequest.findById(req.params.id);
+
+    if (!request) {
+      return res.status(404).json({
+        message: "Maintenance request not found.",
+      });
+    }
+
+    // Match the submitted employee ID against the maintenance team directory.
+    const employee = maintenanceTeam.find(
+      (member) => member.id === assignedTo.trim()
+    );
+
+    if (!employee) {
+      return res.status(400).json({
+        message: "Invalid employee ID. Select an employee from the maintenance team.",
+      });
+    }
+
+    // Prevent assigning an employee to a category they are not qualified to handle.
+    if (!employee.categories.includes(request.category)) {
+      return res.status(400).json({
+        message: `${employee.name} is not qualified for the ${request.category} category.`,
+      });
+    }
+
+    // Store the employee's display name and record the assignment in the activity history.
+    const previousAssignee = request.assignedTo;
+    const newAssignee = employee.name;
+
+    request.assignedTo = newAssignee;
+
+    request.activityHistory.push({
+      action: "Request Assigned",
+      details: previousAssignee
+        ? `Assignment changed from ${previousAssignee} to ${newAssignee}.`
+        : `Request assigned to ${newAssignee}.`,
+      timestamp: new Date(),
+    });
+
+    await request.save();
+
+    return res.status(200).json({
+      message: "Maintenance request assigned successfully!",
+      request,
+    });
+  } catch (error) {
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        message: "Invalid maintenance request ID.",
+      });
+    }
+
+    console.error("Error assigning maintenance request:", error.message);
+
+    return res.status(500).json({
+      message: "Failed to assign maintenance request.",
+    });
+  }
+});
+
 // Update the status of an existing maintenance request in MongoDB.
 app.patch("/api/requests/:id/status", async (req, res) => {
   try {
@@ -173,11 +287,13 @@ app.patch("/api/requests/:id/status", async (req, res) => {
       "Pending",
       "In Progress",
       "Completed",
+      "Assigned",
+      "Rejected",
     ];
 
     if (!allowedStatuses.includes(status)) {
       return res.status(400).json({
-        message: "Invalid status. Use Pending, In Progress, or Completed.",
+        message: "Invalid status. Use Pending, Assigned, In Progress, Completed, or Rejected.",
       });
     }
 
@@ -218,97 +334,6 @@ app.patch("/api/requests/:id/status", async (req, res) => {
   }
 });
 
-// Delete one maintenance request from MongoDB using its ID.
-app.delete("/api/requests/:id", async (req, res) => {
-  try {
-    const request = await MaintenanceRequest.findByIdAndDelete(
-      req.params.id
-    );
-
-    if (!request) {
-      return res.status(404).json({
-        message: "Maintenance request not found.",
-      });
-    }
-
-    return res.status(200).json({
-      message: "Maintenance request deleted successfully!",
-      request,
-    });
-  } catch (error) {
-    if (error.name === "CastError") {
-      return res.status(400).json({
-        message: "Invalid maintenance request ID.",
-      });
-    }
-
-    console.error("Error deleting maintenance request:", error.message);
-
-    return res.status(500).json({
-      message: "Failed to delete maintenance request.",
-    });
-  }
-});
-
-// Assign a maintenance request to a worker and save the assignment in MongoDB.
-app.patch("/api/requests/:id/assign", async (req, res) => {
-  try {
-    const { assignedTo } = req.body;
-
-    if (typeof assignedTo !== "string" || !assignedTo.trim()) {
-      return res.status(400).json({
-        message: "A valid assignee name is required.",
-      });
-    }
-
-// Retrieve the request and record the worker assignment in its activity history.
-  const request = await MaintenanceRequest.findById(req.params.id);
-
-  if (!request) {
-    return res.status(404).json({
-    message: "Maintenance request not found.",
-    });
-  }
-
-  const previousAssignee = request.assignedTo;
-  const newAssignee = assignedTo.trim();
-
-  request.assignedTo = newAssignee;
-
-  request.activityHistory.push({  
-  action: "Request Assigned",
-  details: previousAssignee
-    ? `Assignment changed from ${previousAssignee} to ${newAssignee}.`
-    : `Request assigned to ${newAssignee}.`,
-    timestamp: new Date(),
-  });
-
-  await request.save();
-
-  if (!request) {
-    return res.status(404).json({
-      message: "Maintenance request not found.",
-    });
-  }
-
-  return res.status(200).json({
-    message: "Maintenance request assigned successfully!",
-    request,
-    });
-  } catch (error) {
-    if (error.name === "CastError") {
-      return res.status(400).json({
-        message: "Invalid maintenance request ID.",
-      });
-    }
-
-    console.error("Error assigning maintenance request:", error.message);
-
-    return res.status(500).json({
-      message: "Failed to assign maintenance request.",
-    });
-  }
-});
 // Retrieve summary counts for the maintenance dashboard.
 app.get("/api/requests/summary", async (req, res) => {
   try {

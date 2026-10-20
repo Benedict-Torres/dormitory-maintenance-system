@@ -1370,3 +1370,140 @@ button:focus-visible {
     flex-wrap: wrap;
   }
 }
+
+/* Arrange maintenance employees in a responsive grid with clear spacing. */
+.maintenance-team-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 20px;
+  padding: 22px;
+  align-items: stretch;
+}
+
+/* Give each employee a separate card with consistent spacing. */
+.maintenance-team-card {
+  padding: 20px;
+  background: #ffffff;
+  border: 1px solid #e5eaf3;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(31, 48, 77, 0.04);
+  min-width: 0;
+}
+
+/* Align the employee avatar, name, and job title. */
+.maintenance-team-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.maintenance-team-card-heading h3 {
+  margin: 0;
+  color: #29354a;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.maintenance-team-card-heading p {
+  margin: 5px 0 0;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Separate the employee's specialties from their profile information. */
+.maintenance-team-specialties {
+  padding-top: 16px;
+  border-top: 1px solid #edf0f5;
+}
+
+.maintenance-team-specialties > strong {
+  display: block;
+  margin-bottom: 12px;
+  color: #526078;
+  font-size: 12px;
+}
+
+/* Display each qualified category as an individual tag. */
+.maintenance-team-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.maintenance-team-tags span {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  color: #3656a8;
+  background: #edf3ff;
+  border: 1px solid #dce7ff;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* Keep employee cards readable on narrow screens. */
+@media (max-width: 600px) {
+  .maintenance-team-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 14px;
+  }
+
+  .maintenance-team-card {
+    padding: 16px;
+  }
+}
+
+/* Style the status and employee assignment controls in the request modal. */
+.request-update-controls {
+  display: grid;
+  gap: 18px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+}
+
+.request-update-field {
+  display: grid;
+  gap: 8px;
+}
+
+.request-update-field label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.request-update-field select {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color, #d1d5db);
+  border-radius: 8px;
+  background: var(--card-background, #fff);
+  color: inherit;
+  font: inherit;
+}
+
+.request-update-field select:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.request-form-message {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.request-form-message.error {
+  color: #dc2626;
+}
+
+.request-form-message.success {
+  color: #15803d;
+}

@@ -338,6 +338,57 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [apiError, setApiError] = useState('')
   const [selectedRequest, setSelectedRequest] = useState(null)
+
+  // Store the maintenance team returned by the Express API.
+  const [maintenanceTeam, setMaintenanceTeam] = useState([])
+  const [teamLoading, setTeamLoading] = useState(true)
+  const [teamError, setTeamError] = useState('')
+  const [savingRequestUpdate, setSavingRequestUpdate] = useState(false)
+  const [requestUpdateError, setRequestUpdateError] = useState('')
+  const [requestUpdateSuccess, setRequestUpdateSuccess] = useState('')
+
+// Load employee names, roles, and qualified maintenance categories.
+useEffect(() => {
+  const controller = new AbortController()
+
+  async function loadMaintenanceTeam() {
+    setTeamLoading(true)
+    setTeamError('')
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/maintenance-team`,
+        { signal: controller.signal },
+      )
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(
+          result.message || 'Unable to load the maintenance team.',
+        )
+      }
+
+      if (!Array.isArray(result.employees)) {
+        throw new Error('The maintenance team response has an unexpected format.')
+      }
+
+      setMaintenanceTeam(result.employees)
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        setTeamError(error.message || 'Unable to connect to the maintenance API.')
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setTeamLoading(false)
+      }
+    }
+  }
+
+  loadMaintenanceTeam()
+
+  return () => controller.abort()
+}, [])
   // Fetch real maintenance records and statistics when the dashboard loads.
   useEffect(() => {
     const controller = new AbortController()
@@ -455,6 +506,51 @@ function App() {
     setActiveNav(label)
     setSidebarOpen(false)
   }
+  
+  // Send status or assignment changes to Express and refresh the dashboard after success.
+  async function handleRequestUpdate(endpoint, payload) {
+    setSavingRequestUpdate(true)
+    setRequestUpdateError('')
+    setRequestUpdateSuccess('')
+
+    try {
+      const requestId = selectedRequest?._id || selectedRequest?.id
+
+      if (!requestId) {
+        throw new Error('The maintenance request ID is unavailable.')
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/requests/${requestId}/${endpoint}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        },
+      )
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Unable to update the request.')
+      }
+
+      // Update the open modal immediately using the saved API response.
+      setSelectedRequest(result.request)
+      setRequestUpdateSuccess(result.message || 'Request updated successfully!')
+
+      // Reload requests and summary figures from MongoDB through Express.
+      setRefreshKey((current) => current + 1)
+    } catch (error) {
+      setRequestUpdateError(
+        error.message || 'Unable to connect to the maintenance API.',
+      )
+    } finally {
+      setSavingRequestUpdate(false)
+    }
+  }
 
   return (
     <div className="app-shell">
@@ -490,6 +586,7 @@ function App() {
             {[
               { label: 'Dashboard', icon: LayoutDashboard },
               { label: 'Maintenance Requests', icon: ClipboardList },
+              { label: 'Maintenance Team', icon: Wrench },
               { label: 'Submit a Request', icon: Plus },
               { label: 'Residents', icon: Users },
             ].map(({ label, icon: Icon }) => (
@@ -586,6 +683,75 @@ function App() {
         </header>
 
         <div className="dashboard-content">
+ {activeNav === 'Maintenance Team' ? (
+  <section className="requests-panel maintenance-team-panel">
+    <div className="panel-heading">
+      <div>
+        <h2>Maintenance Team</h2>
+        <p>View employees and the maintenance categories they handle.</p>
+      </div>
+      <span className="sample-note">
+        {maintenanceTeam.length} team members
+      </span>
+    </div>
+
+    {teamLoading && (
+      <div className="empty-state" role="status">
+        <strong>Loading maintenance team...</strong>
+        <p>Connecting to the maintenance API.</p>
+      </div>
+    )}
+
+    {teamError && (
+      <div className="empty-state" role="alert">
+        <strong>Unable to load maintenance team</strong>
+        <p>{teamError}</p>
+      </div>
+    )}
+
+    {!teamLoading && !teamError && maintenanceTeam.length === 0 && (
+      <div className="empty-state">
+        <strong>No team members found</strong>
+        <p>Add employees to your maintenance team directory.</p>
+      </div>
+    )}
+
+    {!teamLoading && !teamError && maintenanceTeam.length > 0 && (
+      <div className="maintenance-team-grid">
+        {maintenanceTeam.map((employee) => (
+          <article
+            className="maintenance-team-card"
+            key={employee.id}
+          >
+            <div className="maintenance-team-card-heading">
+              <div className="avatar avatar-blue">
+                {employee.name
+                  .split(' ')
+                  .map((part) => part[0])
+                  .join('')
+                  .toUpperCase()}
+              </div>
+              <div>
+                <h3>{employee.name}</h3>
+                <p>{employee.role}</p>
+              </div>
+            </div>
+
+            <div className="maintenance-team-specialties">
+              <strong>Qualified categories</strong>
+              <div className="maintenance-team-tags">
+                {employee.categories.map((category) => (
+                  <span key={category}>{category}</span>
+                ))}
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    )}
+  </section>
+) : (
+  <>
           <section className="welcome-section">
             <div>
               <div className="eyebrow">
@@ -804,6 +970,8 @@ function App() {
             <span>© 2026 DormCare Maintenance Portal</span>
             <span>Built for a better dormitory experience.</span>
           </footer>
+          </>
+)}
         </div>
       </main>
       
@@ -893,6 +1061,97 @@ function App() {
           </span>
           <span>{formatDate(selectedRequest.createdAt)}</span>
         </div>
+        
+{/* Allow administrators to change the request status and assign qualified personnel. */}
+<div className="request-update-controls">
+  <div className="request-update-field">
+    <label htmlFor="request-status">UPDATE STATUS</label>
+    <select
+      id="request-status"
+      value={selectedRequest.status || 'Pending'}
+      onChange={(event) =>
+        handleRequestUpdate('status', { status: event.target.value })
+      }
+      disabled={savingRequestUpdate}
+    >
+      <option value="Pending">Pending</option>
+      <option value="Assigned">Assigned</option>
+      <option value="In Progress">In Progress</option>
+      <option value="Completed">Completed</option>
+      <option value="Rejected">Rejected</option>
+    </select>
+  </div>
+
+  <div className="request-update-field">
+    <label htmlFor="request-assignee">ASSIGN MAINTENANCE PERSONNEL</label>
+    <select
+      id="request-assignee"
+      value={
+        maintenanceTeam.find(
+          (employee) =>
+            employee.name === selectedRequest.assignedTo &&
+            Array.isArray(employee.categories) &&
+            employee.categories.includes(selectedRequest.category),
+        )?.id || ''
+      }
+      onChange={(event) =>
+        handleRequestUpdate('assign', { assignedTo: event.target.value })
+      }
+      disabled={
+        savingRequestUpdate ||
+        teamLoading ||
+        !maintenanceTeam.some(
+          (employee) =>
+            Array.isArray(employee.categories) &&
+            employee.categories.includes(selectedRequest.category),
+        )
+      }
+    >
+      <option value="">Select qualified employee</option>
+      {maintenanceTeam
+        .filter(
+          (employee) =>
+            Array.isArray(employee.categories) &&
+            employee.categories.includes(selectedRequest.category),
+        )
+        .map((employee) => (
+          <option key={employee.id} value={employee.id}>
+            {employee.name}
+          </option>
+        ))}
+    </select>
+
+    {!teamLoading &&
+      !maintenanceTeam.some(
+        (employee) =>
+          Array.isArray(employee.categories) &&
+          employee.categories.includes(selectedRequest.category),
+      ) && (
+        <p className="request-form-message error" role="alert">
+          No employees are available for this category.
+        </p>
+      )}
+  </div>
+
+  {savingRequestUpdate && (
+    <p className="request-form-message" role="status">
+      Saving changes...
+    </p>
+  )}
+
+  {requestUpdateError && (
+    <p className="request-form-message error" role="alert">
+      {requestUpdateError}
+    </p>
+  )}
+
+  {requestUpdateSuccess && (
+    <p className="request-form-message success" role="status">
+      {requestUpdateSuccess}
+    </p>
+  )}
+</div>
+
       </div>
 
       <div className="request-modal-footer">
@@ -910,6 +1169,7 @@ function App() {
     </section>
   </div>
 )}
+
 {/* Show the submission form when the user opens Submit a Request. */}
       {activeNav === 'Submit a Request' && (
         <RequestFormModal
