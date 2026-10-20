@@ -55,7 +55,7 @@ const summaryCardConfig = [
   },
 ]
 
-// Format database timestamps into a readable date for the dashboard.
+ // Format database timestamps into a readable date and time for the dashboard.
 function formatDate(dateValue) {
   if (!dateValue) return 'Date unavailable'
 
@@ -67,6 +67,10 @@ function formatDate(dateValue) {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
   }).format(date)
 }
 
@@ -90,7 +94,7 @@ function App() {
   const [summary, setSummary] = useState(null)
   const [loading, setLoading] = useState(true)
   const [apiError, setApiError] = useState('')
-
+  const [selectedRequest, setSelectedRequest] = useState(null)
   // Fetch real maintenance records and statistics when the dashboard loads.
   useEffect(() => {
     const controller = new AbortController()
@@ -137,11 +141,28 @@ function App() {
         }
       }
     }
-
+    
     loadDashboardData()
 
     return () => controller.abort()
   }, [])
+
+  // Close the request details modal when the user presses Escape.
+  useEffect(() => {
+    if (!selectedRequest) return
+
+    function handleEscapeKey(event) {
+      if (event.key === 'Escape') {
+        setSelectedRequest(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleEscapeKey)
+
+    return () => {
+      window.removeEventListener('keydown', handleEscapeKey)
+    }
+  }, [selectedRequest])
 
   // Calculate the displayed summary cards from the backend response.
   const summaryCards = summary
@@ -426,63 +447,77 @@ function App() {
                     <th>STATUS</th>
                     <th>DATE SUBMITTED</th>
                   </tr>
-                </thead>
-                <tbody>
-                  {filteredRequests.map((request) => {
-                    const requestId = request._id || request.id
+                </thead>               
+<tbody>
+  {filteredRequests.map((request) => {
+    const requestId = request._id || request.id
 
-                    return (
-                      <tr key={requestId}>
-                        <td>
-                          <div className="request-title">
-                            {request.title || 'Untitled request'}
-                          </div>
-                          <div className="request-meta">
-                            #{String(requestId).slice(-6).toUpperCase()}
-                            {request.category && (
-                              <>
-                                <span> · </span>
-                                {request.category}
-                              </>
-                            )}
-                          </div>
-                        </td>
-                        <td>
-                          <div className="request-title">
-                            {request.building || 'Building unavailable'}
-                          </div>
-                          <div className="request-meta">
-                            Room {request.roomNumber || '—'}
-                          </div>
-                        </td>
-                        {/* Show the assigned personnel, or a fallback when nobody is assigned. */}
-                        <td>
-                          <div className="resident-cell">
-                            <div className="avatar avatar-light">
-                             {request.assignedTo
-                              ? request.assignedTo
-                                .split(' ')
-                                .map((part) => part[0])
-                                .join('')
-                                .toUpperCase()
-                              : '—'}
-                            </div>
-                            <span>{request.assignedTo || 'Unassigned'}</span>
-                          </div>
-                        </td>
-                        <td>
-                          <StatusBadge value={request.priority} />
-                        </td>
-                        <td>
-                          <StatusBadge value={request.status} />
-                        </td>
-                        <td className="date-cell">
-                          {formatDate(request.createdAt)}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
+    return (
+      // Allow users to open a request by clicking or keyboard navigation.
+      <tr
+        key={requestId}
+        className="clickable-request-row"
+        onClick={() => setSelectedRequest(request)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            setSelectedRequest(request)
+          }
+        }}
+        tabIndex={0}
+        role="button"
+        aria-label={`View details for ${request.title || 'maintenance request'}`}
+      >
+        <td>
+          <div className="request-title">
+            {request.title || 'Untitled request'}
+          </div>
+          <div className="request-meta">
+            #{String(requestId).slice(-6).toUpperCase()}
+            {request.category && (
+              <>
+                <span> · </span>
+                {request.category}
+              </>
+            )}
+          </div>
+        </td>
+        <td>
+          <div className="request-title">
+            {request.building || 'Building unavailable'}
+          </div>
+          <div className="request-meta">
+            Room {request.roomNumber || '—'}
+          </div>
+        </td>
+        {/* Show assigned personnel, or a fallback when nobody is assigned. */}
+        <td>
+          <div className="resident-cell">
+            <div className="avatar avatar-light">
+              {request.assignedTo
+                ? request.assignedTo
+                    .split(' ')
+                    .map((part) => part[0])
+                    .join('')
+                    .toUpperCase()
+                : '—'}
+            </div>
+            <span>{request.assignedTo || 'Unassigned'}</span>
+          </div>
+        </td>
+        <td>
+          <StatusBadge value={request.priority} />
+        </td>
+        <td>
+          <StatusBadge value={request.status} />
+        </td>
+        <td className="date-cell">
+          {formatDate(request.createdAt)}
+        </td>
+      </tr>
+    )
+  })}
+</tbody>
               </table>
 
               {loading && (
@@ -520,12 +555,116 @@ function App() {
             </div>
           </section>
 
+          
+
           <footer className="dashboard-footer">
             <span>© 2026 DormCare Maintenance Portal</span>
             <span>Built for a better dormitory experience.</span>
           </footer>
         </div>
       </main>
+      
+{/* Display the selected maintenance request in a popup modal. */}
+{selectedRequest && (
+  <div
+    className="request-modal-overlay"
+    onClick={() => setSelectedRequest(null)}
+  >
+    <section
+      className="request-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="request-modal-title"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className="request-modal-header">
+        <div>
+          <p className="request-modal-eyebrow">
+            MAINTENANCE REQUEST
+          </p>
+          <h2 id="request-modal-title">
+            {selectedRequest.title || 'Untitled request'}
+          </h2>
+          <p className="request-meta">
+            Request ID: #
+            {String(
+              selectedRequest._id || selectedRequest.id || 'Unavailable',
+            ).slice(-6).toUpperCase()}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          className="request-modal-close"
+          onClick={() => setSelectedRequest(null)}
+          aria-label="Close request details"
+        >
+          ×
+        </button>
+      </div>
+
+      <div className="request-modal-body">
+        <div className="request-modal-badges">
+          <div>
+            <span className="request-detail-label">STATUS</span>
+            <StatusBadge value={selectedRequest.status} />
+          </div>
+          <div>
+            <span className="request-detail-label">PRIORITY</span>
+            <StatusBadge value={selectedRequest.priority} />
+          </div>
+        </div>
+
+        <div className="request-detail-grid">
+          <div className="request-detail-item">
+            <span className="request-detail-label">BUILDING</span>
+            <span>{selectedRequest.building || 'Unavailable'}</span>
+          </div>
+
+          <div className="request-detail-item">
+            <span className="request-detail-label">ROOM</span>
+            <span>{selectedRequest.roomNumber || '—'}</span>
+          </div>
+
+          <div className="request-detail-item">
+            <span className="request-detail-label">CATEGORY</span>
+            <span>{selectedRequest.category || 'Uncategorized'}</span>
+          </div>
+
+          <div className="request-detail-item">
+            <span className="request-detail-label">ASSIGNED PERSONNEL</span>
+            <span>{selectedRequest.assignedTo || 'Unassigned'}</span>
+          </div>
+        </div>
+
+        <div className="request-detail-description">
+          <span className="request-detail-label">DESCRIPTION</span>
+          <p>
+            {selectedRequest.description || 'No description provided.'}
+          </p>
+        </div>
+
+        <div className="request-detail-submission">
+          <span className="request-detail-label">
+            SUBMISSION DATE AND TIME
+          </span>
+          <span>{formatDate(selectedRequest.createdAt)}</span>
+        </div>
+      </div>
+
+      <div className="request-modal-footer">
+        <button
+          type="button"
+          className="request-modal-done"
+          onClick={() => setSelectedRequest(null)}
+        >
+          Close
+        </button>
+      </div>
+    </section>
+  </div>
+)}
+
     </div>
   )
 }
