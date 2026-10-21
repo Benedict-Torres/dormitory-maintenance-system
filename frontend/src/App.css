@@ -1507,3 +1507,36 @@ button:focus-visible {
 .request-form-message.success {
   color: #15803d;
 }
+
+
+/* Residents directory */
+.residents-panel .panel-heading {
+  gap: 18px;
+}
+
+.residents-search-field {
+  width: min(100%, 560px);
+}
+
+.residents-table th {
+  white-space: nowrap;
+}
+
+.residents-table td {
+  vertical-align: middle;
+}
+
+.residents-table .resident-cell {
+  min-width: 180px;
+}
+
+@media (max-width: 600px) {
+  .residents-panel .panel-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .residents-search-field {
+    width: 100%;
+  }
+}

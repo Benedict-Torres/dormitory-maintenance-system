@@ -278,6 +278,32 @@ app.patch("/api/requests/:id/assign", async (req, res) => {
   }
 });
 
+ // Return a safe directory of resident accounts without password hashes.
+app.get("/api/residents", async (req, res) => {
+  try {
+    const residents = await User.find({ role: "Resident" })
+      .select("name email role createdAt")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({
+      count: residents.length,
+      residents: residents.map((resident) => ({
+        id: resident._id.toString(),
+        name: resident.name,
+        email: resident.email,
+        role: resident.role,
+        createdAt: resident.createdAt,
+      })),
+    });
+  } catch (error) {
+    console.error("Error retrieving residents:", error.message);
+    return res.status(500).json({
+      message: "Failed to retrieve residents.",
+    });
+  }
+});
+
 // Update the status of an existing maintenance request in MongoDB.
 app.patch("/api/requests/:id/status", async (req, res) => {
   try {

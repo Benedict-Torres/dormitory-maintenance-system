@@ -358,6 +358,12 @@ function App() {
   const [maintenanceTeam, setMaintenanceTeam] = useState([])
   const [teamLoading, setTeamLoading] = useState(true)
   const [teamError, setTeamError] = useState('')
+
+  // Store resident accounts returned by the residents directory API.
+  const [residents, setResidents] = useState([])
+  const [residentsLoading, setResidentsLoading] = useState(false)
+  const [residentsError, setResidentsError] = useState('')
+  const [residentSearchTerm, setResidentSearchTerm] = useState('')
   const [savingRequestUpdate, setSavingRequestUpdate] = useState(false)
   const [requestUpdateError, setRequestUpdateError] = useState('')
   const [requestUpdateSuccess, setRequestUpdateSuccess] = useState('')
@@ -404,6 +410,42 @@ useEffect(() => {
 
   return () => controller.abort()
 }, [])
+  // Load residents only when the Residents page is opened.
+  useEffect(() => {
+    if (activeNav !== 'Residents') return
+
+    const controller = new AbortController()
+
+    async function loadResidents() {
+      setResidentsLoading(true)
+      setResidentsError('')
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/residents`, {
+          signal: controller.signal,
+        })
+        const result = await response.json()
+
+        if (!response.ok) {
+          throw new Error(result.message || 'Unable to load residents.')
+        }
+        if (!Array.isArray(result.residents)) {
+          throw new Error('The residents response has an unexpected format.')
+        }
+        setResidents(result.residents)
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          setResidentsError(error.message || 'Unable to connect to the residents API.')
+        }
+      } finally {
+        if (!controller.signal.aborted) setResidentsLoading(false)
+      }
+    }
+
+    loadResidents()
+    return () => controller.abort()
+  }, [activeNav])
+
   // Fetch real maintenance records and statistics when the dashboard loads.
   useEffect(() => {
     const controller = new AbortController()
@@ -519,6 +561,14 @@ useEffect(() => {
       statusFilter === 'All Statuses' || request.status === statusFilter
 
     return matchesSearch && matchesStatus
+  })
+
+  const filteredResidents = residents.filter((resident) => {
+    const searchableText = [resident.name, resident.email]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+    return searchableText.includes(residentSearchTerm.toLowerCase().trim())
   })
 
   // Keep navigation interactive while the other pages are developed later.
@@ -819,7 +869,95 @@ useEffect(() => {
         </header>
 
         <div className="dashboard-content">
- {activeNav === 'Maintenance Team' ? (
+ {activeNav === 'Residents' ? (
+  <section className="requests-panel residents-panel">
+    <div className="panel-heading">
+      <div>
+        <h2>Residents</h2>
+        <p>View registered resident accounts and their contact emails.</p>
+      </div>
+      <span className="sample-note">{residents.length} resident{residents.length === 1 ? '' : 's'}</span>
+    </div>
+
+    <div className="table-toolbar">
+      <label className="search-field residents-search-field">
+        <Search size={18} />
+        <input
+          type="search"
+          placeholder="Search residents by name or email..."
+          value={residentSearchTerm}
+          onChange={(event) => setResidentSearchTerm(event.target.value)}
+          aria-label="Search residents by name or email"
+        />
+      </label>
+    </div>
+
+    {residentsLoading && (
+      <div className="empty-state" role="status">
+        <strong>Loading residents...</strong>
+        <p>Retrieving registered accounts from the database.</p>
+      </div>
+    )}
+
+    {residentsError && (
+      <div className="empty-state" role="alert">
+        <strong>Unable to load residents</strong>
+        <p>{residentsError}</p>
+      </div>
+    )}
+
+    {!residentsLoading && !residentsError && (
+      <>
+        <div className="table-scroll">
+          <table className="requests-table residents-table">
+            <thead>
+              <tr>
+                <th>RESIDENT</th>
+                <th>EMAIL ADDRESS</th>
+                <th>ACCOUNT ROLE</th>
+                <th>DATE REGISTERED</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredResidents.map((resident) => (
+                <tr key={resident.id}>
+                  <td>
+                    <div className="resident-cell">
+                      <div className="avatar avatar-blue">
+                        {(resident.name || 'R').split(' ').filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase()}
+                      </div>
+                      <span className="request-title">{resident.name || 'Name unavailable'}</span>
+                    </div>
+                  </td>
+                  <td>{resident.email || 'Email unavailable'}</td>
+                  <td><StatusBadge value={resident.role || 'Resident'} /></td>
+                  <td className="date-cell">{formatDate(resident.createdAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {filteredResidents.length === 0 && (
+          <div className="empty-state">
+            <Users size={25} />
+            <strong>{residents.length === 0 ? 'No residents registered yet' : 'No matching residents'}</strong>
+            <p>
+              {residents.length === 0
+                ? 'Resident accounts created through registration will appear here.'
+                : 'Try a different name or email address.'}
+            </p>
+          </div>
+        )}
+
+        <div className="table-footer">
+          <span>Showing <strong>{filteredResidents.length}</strong> of <strong>{residents.length}</strong> residents</span>
+          <span className="sample-note">Live API data</span>
+        </div>
+      </>
+    )}
+  </section>
+ ) : activeNav === 'Maintenance Team' ? (
   <section className="requests-panel maintenance-team-panel">
     <div className="panel-heading">
       <div>
