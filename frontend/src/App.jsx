@@ -338,6 +338,17 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [apiError, setApiError] = useState('')
   const [selectedRequest, setSelectedRequest] = useState(null)
+  const [isEditingRequest, setIsEditingRequest] = useState(false)
+  const [editFormData, setEditFormData] = useState({
+    title: '',
+    description: '',
+    category: '',
+    building: '',
+    roomNumber: '',
+    priority: 'Medium',
+  })
+  const [savingRequestEdit, setSavingRequestEdit] = useState(false)
+  const [requestEditError, setRequestEditError] = useState('')
 
   // Store the maintenance team returned by the Express API.
   const [maintenanceTeam, setMaintenanceTeam] = useState([])
@@ -448,6 +459,7 @@ useEffect(() => {
     function handleEscapeKey(event) {
       if (event.key === 'Escape') {
         setSelectedRequest(null)
+          setIsEditingRequest(false)
       }
     }
 
@@ -507,6 +519,81 @@ useEffect(() => {
     setSidebarOpen(false)
   }
   
+  // Open the edit form with the selected request's current values.
+  function beginEditingRequest() {
+    setEditFormData({
+      title: selectedRequest?.title || '',
+      description: selectedRequest?.description || '',
+      category: selectedRequest?.category || '',
+      building: selectedRequest?.building || '',
+      roomNumber: selectedRequest?.roomNumber || '',
+      priority: selectedRequest?.priority || 'Medium',
+    })
+    setRequestEditError('')
+    setIsEditingRequest(true)
+  }
+
+  function handleEditFormChange(event) {
+    const { name, value } = event.target
+    setEditFormData((current) => ({ ...current, [name]: value }))
+  }
+
+  // Save editable fields through PATCH /api/requests/:id.
+  async function handleEditRequestSubmit(event) {
+    event.preventDefault()
+    setRequestEditError('')
+
+    const cleanedData = Object.fromEntries(
+      Object.entries(editFormData).map(([key, value]) => [key, value.trim()]),
+    )
+
+    if (
+      !cleanedData.title ||
+      !cleanedData.description ||
+      !cleanedData.category ||
+      !cleanedData.building ||
+      !cleanedData.roomNumber
+    ) {
+      setRequestEditError('Please complete all required fields.')
+      return
+    }
+
+    if (cleanedData.title.length > 100) {
+      setRequestEditError('The request title must not exceed 100 characters.')
+      return
+    }
+
+    const requestId = selectedRequest?._id || selectedRequest?.id
+    if (!requestId) {
+      setRequestEditError('The maintenance request ID is unavailable.')
+      return
+    }
+
+    setSavingRequestEdit(true)
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/requests/${requestId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cleanedData),
+      })
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Unable to edit the maintenance request.')
+      }
+
+      setSelectedRequest(result.request || { ...selectedRequest, ...cleanedData })
+      setIsEditingRequest(false)
+      setRequestUpdateError('')
+      setRequestUpdateSuccess(result.message || 'Request details saved successfully!')
+      setRefreshKey((current) => current + 1)
+    } catch (error) {
+      setRequestEditError(error.message || 'Unable to connect to the maintenance API.')
+    } finally {
+      setSavingRequestEdit(false)
+    }
+  }
+
   // Send status or assignment changes to Express and refresh the dashboard after success.
   async function handleRequestUpdate(endpoint, payload) {
     setSavingRequestUpdate(true)
@@ -979,7 +1066,7 @@ useEffect(() => {
 {selectedRequest && (
   <div
     className="request-modal-overlay"
-    onClick={() => setSelectedRequest(null)}
+    onClick={() => { setSelectedRequest(null); setIsEditingRequest(false) }}
   >
     <section
       className="request-modal"
@@ -1007,7 +1094,7 @@ useEffect(() => {
         <button
           type="button"
           className="request-modal-close"
-          onClick={() => setSelectedRequest(null)}
+          onClick={() => { setSelectedRequest(null); setIsEditingRequest(false) }}
           aria-label="Close request details"
         >
           ×
@@ -1015,6 +1102,85 @@ useEffect(() => {
       </div>
 
       <div className="request-modal-body">
+        {isEditingRequest ? (
+          <form onSubmit={handleEditRequestSubmit}>
+            <div className="request-form-body">
+              <label className="request-form-field">
+                Request title *
+                <input
+                  name="title"
+                  value={editFormData.title}
+                  onChange={handleEditFormChange}
+                  maxLength={100}
+                  required
+                />
+              </label>
+
+              <label className="request-form-field">
+                Description *
+                <textarea
+                  name="description"
+                  value={editFormData.description}
+                  onChange={handleEditFormChange}
+                  rows={4}
+                  required
+                />
+              </label>
+
+              <div className="request-form-grid">
+                <label className="request-form-field">
+                  Category *
+                  <select name="category" value={editFormData.category} onChange={handleEditFormChange} required>
+                    <option value="">Select category</option>
+                    <option value="Plumbing">Plumbing</option>
+                    <option value="Electrical">Electrical</option>
+                    <option value="Carpentry">Carpentry</option>
+                    <option value="Cleaning">Cleaning</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </label>
+
+                <label className="request-form-field">
+                  Priority
+                  <select name="priority" value={editFormData.priority} onChange={handleEditFormChange}>
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                  </select>
+                </label>
+
+                <label className="request-form-field">
+                  Building *
+                  <input name="building" value={editFormData.building} onChange={handleEditFormChange} required />
+                </label>
+
+                <label className="request-form-field">
+                  Room number *
+                  <input name="roomNumber" value={editFormData.roomNumber} onChange={handleEditFormChange} required />
+                </label>
+              </div>
+
+              {requestEditError && (
+                <p className="request-form-message error" role="alert">{requestEditError}</p>
+              )}
+            </div>
+
+            <div className="request-modal-footer request-form-footer">
+              <button
+                type="button"
+                className="request-form-cancel"
+                onClick={() => { setIsEditingRequest(false); setRequestEditError('') }}
+                disabled={savingRequestEdit}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="request-modal-done" disabled={savingRequestEdit}>
+                {savingRequestEdit ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <>
         <div className="request-modal-badges">
           <div>
             <span className="request-detail-label">STATUS</span>
@@ -1151,21 +1317,33 @@ useEffect(() => {
     </p>
   )}
 </div>
-
+          </>
+        )}
       </div>
 
-      <div className="request-modal-footer">
-        <button
-          type="button"
-          className="request-modal-done"
-          onClick={() => {
-            setSelectedRequest(null);
-            setRefreshKey((prev) => prev + 1);
-          }}
-        >
-          Close
-        </button>
-      </div>
+      {!isEditingRequest && (
+        <div className="request-modal-footer">
+          <button
+            type="button"
+            className="request-form-cancel"
+            onClick={beginEditingRequest}
+          >
+            Edit Request
+          </button>
+          <button
+            type="button"
+            className="request-modal-done"
+            onClick={() => {
+              setSelectedRequest(null);
+              setIsEditingRequest(false);
+              setRequestEditError('');
+              setRefreshKey((prev) => prev + 1);
+            }}
+          >
+            Close
+          </button>
+        </div>
+      )}
     </section>
   </div>
 )}
