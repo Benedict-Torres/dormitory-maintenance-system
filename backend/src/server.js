@@ -364,6 +364,156 @@ app.get("/api/requests/summary", async (req, res) => {
   }
 });
 
+/**
+ * Retrieve one maintenance request by its MongoDB ID.
+ * Returns 404 if the request does not exist and 400 if the ID is invalid.
+ */
+app.get("/api/requests/:id", async (req, res) => {
+  try {
+    const request = await MaintenanceRequest.findById(req.params.id);
+
+    if (!request) {
+      return res.status(404).json({
+        message: "Maintenance request not found.",
+      });
+    }
+
+    return res.status(200).json({
+      message: "Maintenance request retrieved successfully.",
+      request,
+    });
+  } catch (error) {
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        message: "Invalid maintenance request ID.",
+      });
+    }
+
+    console.error("Error retrieving maintenance request:", error.message);
+
+    return res.status(500).json({
+      message: "Failed to retrieve maintenance request.",
+    });
+  }
+});
+
+
+/*
+ * Update the editable details of an existing maintenance request.
+ * Status and assignment are managed by their own dedicated endpoints.
+ */
+app.patch("/api/requests/:id", async (req, res) => {
+  try {
+    const allowedFields = [
+      "title",
+      "description",
+      "category",
+      "building",
+      "roomNumber",
+      "priority",
+    ];
+
+    const submittedFields = Object.keys(req.body || {});
+
+    // Require at least one field to update.
+    if (submittedFields.length === 0) {
+      return res.status(400).json({
+        message: "Provide at least one field to update.",
+      });
+    }
+
+    // Prevent changes to status, assignedTo, activityHistory, or other
+    // fields through this general edit endpoint.
+    const unsupportedFields = submittedFields.filter(
+      (field) => !allowedFields.includes(field)
+    );
+
+    if (unsupportedFields.length > 0) {
+      return res.status(400).json({
+        message: "One or more fields cannot be edited through this endpoint.",
+        unsupportedFields,
+      });
+    }
+
+    // Editable values must be strings.
+    for (const field of submittedFields) {
+      if (
+        typeof req.body[field] !== "string" ||
+        !req.body[field].trim()
+      ) {
+        return res.status(400).json({
+          message: `${field} must be a non-empty string.`,
+        });
+      }
+    }
+
+    // Find the existing maintenance request.
+    const request = await MaintenanceRequest.findById(req.params.id);
+
+    if (!request) {
+      return res.status(404).json({
+        message: "Maintenance request not found.",
+      });
+    }
+
+    // Track fields whose values actually change.
+    const changedFields = submittedFields.filter(
+      (field) => request[field] !== req.body[field].trim()
+    );
+
+    // Avoid creating unnecessary history entries.
+    if (changedFields.length === 0) {
+      return res.status(200).json({
+        message: "No changes were necessary.",
+        request,
+      });
+    }
+
+    // Apply only the permitted fields.
+    for (const field of changedFields) {
+      request[field] = req.body[field].trim();
+    }
+
+    // Record the edit for the request's activity history.
+    request.activityHistory.push({
+      action: "Request Edited",
+      details: `Updated fields: ${changedFields.join(", ")}.`,
+      timestamp: new Date(),
+    });
+
+    // Mongoose validates schema requirements and enum values on save.
+    await request.save();
+
+    return res.status(200).json({
+      message: "Maintenance request updated successfully!",
+      request,
+    });
+  } catch (error) {
+    // Handle malformed MongoDB IDs.
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        message: "Invalid maintenance request ID.",
+      });
+    }
+
+    // Handle invalid categories, priorities, and other schema violations.
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        message: "Invalid maintenance request data.",
+        errors: Object.values(error.errors).map(
+          (validationError) => validationError.message
+        ),
+      });
+    }
+
+    console.error("Error updating maintenance request:", error.message);
+
+    return res.status(500).json({
+      message: "Failed to update maintenance request.",
+    });
+  }
+});
+
  // Register a resident account after validating input and hashing the password.
 app.post("/api/auth/register", async (req, res) => {
   try {
