@@ -15,6 +15,7 @@ import {
   Plus,
   Search,
   Settings,
+  Trash2,
   ShieldCheck,
   Users,
   Wrench,
@@ -349,6 +350,9 @@ function App() {
   })
   const [savingRequestEdit, setSavingRequestEdit] = useState(false)
   const [requestEditError, setRequestEditError] = useState('')
+  const [deletingRequest, setDeletingRequest] = useState(false)
+  const [deleteRequestError, setDeleteRequestError] = useState('')
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   // Store the maintenance team returned by the Express API.
   const [maintenanceTeam, setMaintenanceTeam] = useState([])
@@ -458,8 +462,12 @@ useEffect(() => {
 
     function handleEscapeKey(event) {
       if (event.key === 'Escape') {
-        setSelectedRequest(null)
+        if (showDeleteConfirm) {
+          setShowDeleteConfirm(false)
+        } else {
+          setSelectedRequest(null)
           setIsEditingRequest(false)
+        }
       }
     }
 
@@ -468,7 +476,7 @@ useEffect(() => {
     return () => {
       window.removeEventListener('keydown', handleEscapeKey)
     }
-  }, [selectedRequest])
+  }, [selectedRequest, showDeleteConfirm])
 
   // Calculate the displayed summary cards from the backend response.
   const summaryCards = summary
@@ -591,6 +599,47 @@ useEffect(() => {
       setRequestEditError(error.message || 'Unable to connect to the maintenance API.')
     } finally {
       setSavingRequestEdit(false)
+    }
+  }
+
+  // Delete the selected request only after explicit confirmation.
+  async function handleDeleteRequest() {
+    const requestId = selectedRequest?._id || selectedRequest?.id
+
+    if (!requestId) {
+      setDeleteRequestError('The maintenance request ID is unavailable.')
+      return
+    }
+
+    setDeletingRequest(true)
+    setDeleteRequestError('')
+    setDeleteRequestError('')
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/requests/${requestId}`, {
+        method: 'DELETE',
+      })
+
+      const result = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Unable to delete the maintenance request.')
+      }
+
+      setSelectedRequest(null)
+      setShowDeleteConfirm(false)
+      setIsEditingRequest(false)
+      setRequestEditError('')
+      setDeleteRequestError('')
+      setRequestUpdateError('')
+      setRequestUpdateSuccess('')
+      setRefreshKey((current) => current + 1)
+    } catch (error) {
+      setDeleteRequestError(
+        error.message || 'Unable to connect to the maintenance API.',
+      )
+    } finally {
+      setDeletingRequest(false)
     }
   }
 
@@ -1066,7 +1115,7 @@ useEffect(() => {
 {selectedRequest && (
   <div
     className="request-modal-overlay"
-    onClick={() => { setSelectedRequest(null); setIsEditingRequest(false) }}
+    onClick={() => { setSelectedRequest(null); setIsEditingRequest(false); setShowDeleteConfirm(false) }}
   >
     <section
       className="request-modal"
@@ -1094,7 +1143,7 @@ useEffect(() => {
         <button
           type="button"
           className="request-modal-close"
-          onClick={() => { setSelectedRequest(null); setIsEditingRequest(false) }}
+          onClick={() => { setSelectedRequest(null); setIsEditingRequest(false); setShowDeleteConfirm(false) }}
           aria-label="Close request details"
         >
           ×
@@ -1322,33 +1371,132 @@ useEffect(() => {
       </div>
 
       {!isEditingRequest && (
-        <div className="request-modal-footer">
-          <button
-            type="button"
-            className="request-form-cancel"
-            onClick={beginEditingRequest}
-          >
-            Edit Request
-          </button>
-          <button
-            type="button"
-            className="request-modal-done"
-            onClick={() => {
-              setSelectedRequest(null);
-              setIsEditingRequest(false);
-              setRequestEditError('');
-              setRefreshKey((prev) => prev + 1);
-            }}
-          >
-            Close
-          </button>
-        </div>
+        <>
+          {deleteRequestError && (
+            <p className="request-form-message error" role="alert">
+              {deleteRequestError}
+            </p>
+          )}
+          <div className="request-modal-footer">
+            <button
+              type="button"
+              className="request-form-cancel"
+              onClick={() => {
+                setDeleteRequestError('')
+                setShowDeleteConfirm(true)
+              }}
+              disabled={deletingRequest || savingRequestUpdate}
+              aria-label="Delete maintenance request"
+              style={{ display: 'inline-flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+            >
+              <Trash2 size={16} />
+              Delete Request
+            </button>
+            <button
+              type="button"
+              className="request-form-cancel"
+              onClick={beginEditingRequest}
+              disabled={deletingRequest}
+            >
+              Edit Request
+            </button>
+            <button
+              type="button"
+              className="request-modal-done"
+              disabled={deletingRequest}
+              onClick={() => {
+                setSelectedRequest(null);
+                setIsEditingRequest(false);
+                setRequestEditError('');
+                setDeleteRequestError('');
+                setRefreshKey((prev) => prev + 1);
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </>
       )}
     </section>
   </div>
 )}
 
-{/* Show the submission form when the user opens Submit a Request. */}
+{/* Custom centered confirmation modal for deleting a maintenance request. */}
+      {showDeleteConfirm && selectedRequest && (
+        <div
+          className="request-modal-overlay"
+          style={{ zIndex: 2000 }}
+          onClick={() => {
+            if (!deletingRequest) setShowDeleteConfirm(false)
+          }}
+        >
+          <section
+            className="request-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-confirm-title"
+            aria-describedby="delete-confirm-description"
+            onClick={(event) => event.stopPropagation()}
+            style={{ width: 'min(100% - 32px, 440px)', maxWidth: '440px', maxHeight: 'none' }}
+          >
+            <div className="request-modal-body" style={{ padding: '28px 28px 20px', textAlign: 'center' }}>
+              <div
+                aria-hidden="true"
+                style={{
+                  width: '60px',
+                  height: '60px',
+                  borderRadius: '50%',
+                  margin: '0 auto 18px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: '#FDE8E7',
+                  color: '#C83E3E',
+                }}
+              >
+                <Trash2 size={27} />
+              </div>
+              <h2 id="delete-confirm-title" style={{ margin: '0 0 10px' }}>
+                Delete Maintenance Request?
+              </h2>
+              <p id="delete-confirm-description" style={{ margin: 0, lineHeight: 1.6 }}>
+                Are you sure you want to delete &quot;{selectedRequest.title || 'this maintenance request'}&quot;?
+                This action cannot be undone.
+              </p>
+              {deleteRequestError && (
+                <p className="request-form-message error" role="alert" style={{ marginTop: '14px' }}>
+                  {deleteRequestError}
+                </p>
+              )}
+            </div>
+            <div className="request-modal-footer" style={{ justifyContent: 'center', gap: '12px' }}>
+              <button
+                type="button"
+                className="request-form-cancel"
+                onClick={() => {
+                  setShowDeleteConfirm(false)
+                  setDeleteRequestError('')
+                }}
+                disabled={deletingRequest}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="request-modal-done"
+                onClick={handleDeleteRequest}
+                disabled={deletingRequest}
+                style={{ background: '#C83E3E', borderColor: '#C83E3E', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+              >
+                <Trash2 size={16} />
+                {deletingRequest ? 'Deleting...' : 'Delete Request'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* Show the submission form when the user opens Submit a Request. */}
       {activeNav === 'Submit a Request' && (
         <RequestFormModal
           onClose={() => setActiveNav('Dashboard')}
