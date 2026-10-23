@@ -14,12 +14,74 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+/**
+ * Verify the JWT supplied in the Authorization header.
+ */
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({
+      message: "Authentication required. Please log in.",
+    });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  if (!token) {
+    return res.status(401).json({
+      message: "Authentication token is missing.",
+    });
+  }
+
+  if (!process.env.JWT_SECRET) {
+    console.error("JWT_SECRET is not configured.");
+    return res.status(500).json({
+      message: "Server authentication is not configured.",
+    });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, (error, decoded) => {
+    if (error) {
+      return res.status(401).json({
+        message: "Invalid or expired authentication token.",
+      });
+    }
+
+    req.user = decoded;
+    next();
+  });
+}
+// Allow only Admin users to access the route.
+function requireAdmin(req, res, next) {
+  if (req.user?.role !== "Admin") {
+    return res.status(403).json({
+      message: "Access denied. Admin privileges required.",
+    });
+  }
+
+  next();
+}
+
+// Allow only authenticated users with one of the specified roles.
+function requireRoles(...roles) {
+  return (req, res, next) => {
+    if (!roles.includes(req.user?.role)) {
+      return res.status(403).json({
+        message: "Access denied. Insufficient permissions.",
+      });
+    }
+
+    next();
+  };
+}
+
 // Test endpoint
 app.get("/api/test", (req, res) => {
   res.json({ message: "Dormitory Maintenance API is working!" });
 });
 
-app.get("/api/maintenance-team", (req, res) => {
+app.get("/api/maintenance-team", authenticateToken, (req, res) => {
   res.status(200).json({
     count: maintenanceTeam.length,
     employees: maintenanceTeam,
@@ -47,7 +109,7 @@ app.get("/api/test", (req, res) => {
 });
 
 // Add the new POST endpoint below the test endpoint
-app.post("/api/requests", async (req, res) => {
+app.post("/api/requests", authenticateToken, async (req, res) => {
   try {
     const request = await MaintenanceRequest.create(req.body);
 
@@ -72,7 +134,7 @@ app.post("/api/requests", async (req, res) => {
 });
 
 // Retrieve maintenance requests with filtering, text search, and pagination.
-app.get("/api/requests", async (req, res) => {
+app.get("/api/requests", authenticateToken, async (req, res) => {
   try {
     const { status, category, priority, search } = req.query;
 
@@ -131,49 +193,8 @@ app.get("/api/requests", async (req, res) => {
   }
 });
 
-// Retrieve maintenance requests with optional status, category, priority, and text-search filters.
-app.get("/api/requests", async (req, res) => {
-  try {
-    const { status, category, priority, search } = req.query;
-    const filters = {};
-
-    if (status) {
-      filters.status = status;
-    }
-
-    if (category) {
-      filters.category = category;
-    }
-
-    if (priority) {
-      filters.priority = priority;
-    }
-
-    if (search && search.trim()) {
-      filters.$or = [
-        { title: { $regex: search.trim(), $options: "i" } },
-        { description: { $regex: search.trim(), $options: "i" } },
-      ];
-    }
-
-    const requests = await MaintenanceRequest.find(filters)
-      .sort({ createdAt: -1 });
-
-    return res.status(200).json({
-      count: requests.length,
-      requests,
-    });
-  } catch (error) {
-    console.error("Error retrieving requests:", error.message);
-
-    return res.status(500).json({
-      message: "Failed to retrieve maintenance requests.",
-    });
-  }
-});
-
 // Delete one maintenance request from MongoDB using its ID.
-app.delete("/api/requests/:id", async (req, res) => {
+app.delete("/api/requests/:id", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const request = await MaintenanceRequest.findByIdAndDelete(
       req.params.id
@@ -205,7 +226,7 @@ app.delete("/api/requests/:id", async (req, res) => {
 });
 
 /* Assign a request only to an employee qualified for its maintenance category. */
-app.patch("/api/requests/:id/assign", async (req, res) => {
+app.patch("/api/requests/:id/assign", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { assignedTo } = req.body;
 
@@ -279,7 +300,7 @@ app.patch("/api/requests/:id/assign", async (req, res) => {
 });
 
  // Return a safe directory of resident accounts without password hashes.
-app.get("/api/residents", async (req, res) => {
+app.get("/api/residents", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const residents = await User.find({ role: "Resident" })
       .select("name email role createdAt")
@@ -304,8 +325,53 @@ app.get("/api/residents", async (req, res) => {
   }
 });
 
+/**
+ * Delete a resident account.
+ * Only authenticated Admin users may perform this action.
+ */
+app.delete(
+  "/api/residents/:id",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const user = await User.findByIdAndDelete(req.params.id);
+
+      if (!user) {
+        return res.status(404).json({
+          message: "Resident account not found.",
+        });
+      }
+
+      // Never return the deleted user's password hash.
+      return res.status(200).json({
+        message: "Resident account deleted successfully.",
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+        },
+      });
+    } catch (error) {
+      if (error.name === "CastError") {
+        return res.status(400).json({
+          message: "Invalid resident account ID.",
+        });
+      }
+
+      console.error("Error deleting resident:", error.message);
+
+      return res.status(500).json({
+        message: "Failed to delete resident account.",
+      });
+    }
+  }
+);
+
+
 // Update the status of an existing maintenance request in MongoDB.
-app.patch("/api/requests/:id/status", async (req, res) => {
+app.patch("/api/requests/:id/status", authenticateToken, requireRoles("Admin", "Maintenance"), async (req, res) => {
   try {
     const { status } = req.body;
 
@@ -361,7 +427,7 @@ app.patch("/api/requests/:id/status", async (req, res) => {
 });
 
 // Retrieve summary counts for the maintenance dashboard.
-app.get("/api/requests/summary", async (req, res) => {
+app.get("/api/requests/summary", authenticateToken, async (req, res) => {
   try {
     const [
       totalRequests,
@@ -394,7 +460,7 @@ app.get("/api/requests/summary", async (req, res) => {
  * Retrieve one maintenance request by its MongoDB ID.
  * Returns 404 if the request does not exist and 400 if the ID is invalid.
  */
-app.get("/api/requests/:id", async (req, res) => {
+app.get("/api/requests/:id", authenticateToken,async (req, res) => {
   try {
     const request = await MaintenanceRequest.findById(req.params.id);
 
@@ -428,7 +494,7 @@ app.get("/api/requests/:id", async (req, res) => {
  * Update the editable details of an existing maintenance request.
  * Status and assignment are managed by their own dedicated endpoints.
  */
-app.patch("/api/requests/:id", async (req, res) => {
+app.patch("/api/requests/:id", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const allowedFields = [
       "title",

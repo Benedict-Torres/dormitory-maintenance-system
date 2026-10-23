@@ -87,7 +87,7 @@ function StatusBadge({ value }) {
 // Main dashboard loads maintenance requests and summary figures from Express.
 
  // Handle the maintenance request form, validation, and API submission.
-function RequestFormModal({ onClose, onCreated }) {
+function RequestFormModal({ onClose, onCreated, authToken }) {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -146,6 +146,7 @@ function RequestFormModal({ onClose, onCreated }) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify(cleanedData),
       })
@@ -327,7 +328,7 @@ function RequestFormModal({ onClose, onCreated }) {
   )
 }
 
-function App() {
+function DashboardApp({ authToken, user, onLogout }) {
   const [refreshKey, setRefreshKey] = useState(0)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('All Statuses')
@@ -379,7 +380,7 @@ useEffect(() => {
     try {
       const response = await fetch(
         `${API_BASE_URL}/api/maintenance-team`,
-        { signal: controller.signal },
+        { headers: { Authorization: `Bearer ${authToken}` }, signal: controller.signal },
       )
 
       const result = await response.json()
@@ -409,7 +410,7 @@ useEffect(() => {
   loadMaintenanceTeam()
 
   return () => controller.abort()
-}, [])
+}, [authToken])
   // Load residents only when the Residents page is opened.
   useEffect(() => {
     if (activeNav !== 'Residents') return
@@ -422,6 +423,7 @@ useEffect(() => {
 
       try {
         const response = await fetch(`${API_BASE_URL}/api/residents`, {
+          headers: { Authorization: `Bearer ${authToken}` },
           signal: controller.signal,
         })
         const result = await response.json()
@@ -444,7 +446,7 @@ useEffect(() => {
 
     loadResidents()
     return () => controller.abort()
-  }, [activeNav])
+  }, [activeNav, authToken])
 
   // Fetch real maintenance records and statistics when the dashboard loads.
   useEffect(() => {
@@ -457,9 +459,11 @@ useEffect(() => {
       try {
         const [requestsResponse, summaryResponse] = await Promise.all([
           fetch(`${API_BASE_URL}/api/requests?limit=100`, {
+            headers: { Authorization: `Bearer ${authToken}` },
             signal: controller.signal,
           }),
           fetch(`${API_BASE_URL}/api/requests/summary`, {
+            headers: { Authorization: `Bearer ${authToken}` },
             signal: controller.signal,
           }),
         ])
@@ -496,7 +500,7 @@ useEffect(() => {
     loadDashboardData()
 
     return () => controller.abort()
-  }, [refreshKey])
+  }, [refreshKey, authToken])
 
   // Close the request details modal when the user presses Escape.
   useEffect(() => {
@@ -631,7 +635,7 @@ useEffect(() => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/requests/${requestId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
         body: JSON.stringify(cleanedData),
       })
       const result = await response.json()
@@ -668,6 +672,7 @@ useEffect(() => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/requests/${requestId}`, {
         method: 'DELETE',
+        headers: { Authorization: `Bearer ${authToken}` },
       })
 
       const result = await response.json().catch(() => ({}))
@@ -712,6 +717,7 @@ useEffect(() => {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
+            Authorization: `Bearer ${authToken}`,
           },
           body: JSON.stringify(payload),
         },
@@ -817,12 +823,15 @@ useEffect(() => {
 
           <button
             className="profile-row"
-            onClick={() => handleNavigation('Profile')}
+            onClick={onLogout}
+            title="Log out of DormCare"
           >
-            <div className="avatar avatar-blue">AD</div>
+            <div className="avatar avatar-blue">
+              {(user?.name || 'User').split(' ').filter(Boolean).map((part) => part[0]).join('').slice(0, 2).toUpperCase()}
+            </div>
             <div className="profile-copy">
-              <strong>Admin Demo</strong>
-              <span>Administrator</span>
+              <strong>{user?.name || 'Signed-in user'}</strong>
+              <span>{user?.role || 'User'}</span>
             </div>
             <LogOut size={17} className="profile-action" />
           </button>
@@ -1033,7 +1042,7 @@ useEffect(() => {
                 DORMITORY OVERVIEW
               </div>
               <h1>
-                Good day, Admin! <span>👋</span>
+                Good day, {(user?.name || 'there').split(' ')[0]}! <span>👋</span>
               </h1>
               <p>Here&apos;s what&apos;s happening with your dormitory today.</p>
             </div>
@@ -1637,11 +1646,138 @@ useEffect(() => {
       {/* Show the submission form when the user opens Submit a Request. */}
       {activeNav === 'Submit a Request' && (
         <RequestFormModal
+          authToken={authToken}
           onClose={() => setActiveNav('Dashboard')}
           onCreated={() => setRefreshKey((current) => current + 1)}
         />
       )}
   </div>
+  )
+}
+
+const AUTH_TOKEN_KEY = 'dormcareToken'
+const AUTH_USER_KEY = 'dormcareUser'
+
+function LoginPage({ onLogin }) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  async function handleSubmit(event) {
+    event.preventDefault()
+    setErrorMessage('')
+
+    if (!email.trim() || !password) {
+      setErrorMessage('Enter your email and password to continue.')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password }),
+      })
+      const result = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Unable to sign in. Check your credentials and try again.')
+      }
+      if (!result.token || !result.user) {
+        throw new Error('The login response is missing the session token or user details.')
+      }
+      if (result.user.role !== 'Admin') {
+        throw new Error('This dashboard is currently for administrators. Please use an Admin account.')
+      }
+
+      onLogin(result.token, result.user)
+    } catch (error) {
+      setErrorMessage(error.message || 'Unable to connect to DormCare. Check that the backend is running.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <main className="login-screen">
+      <section className="login-card" aria-labelledby="login-title">
+        <div className="login-brand-icon"><Building2 size={27} /></div>
+        <p className="login-eyebrow">DORMITORY MAINTENANCE SYSTEM</p>
+        <h1 id="login-title">Welcome to DormCare</h1>
+        <p className="login-description">Sign in with your administrator account to manage dormitory maintenance.</p>
+
+        <form className="login-form" onSubmit={handleSubmit}>
+          <label className="login-field">
+            Email address
+            <input
+              type="email"
+              name="email"
+              autoComplete="username"
+              placeholder="admin@example.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+          </label>
+          <label className="login-field">
+            Password
+            <input
+              type="password"
+              name="password"
+              autoComplete="current-password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+          </label>
+          {errorMessage && <p className="login-error" role="alert">{errorMessage}</p>}
+          <button className="login-submit" type="submit" disabled={submitting}>
+            {submitting ? 'Signing in…' : 'Sign in'}
+            {!submitting && <ArrowRight size={18} />}
+          </button>
+        </form>
+        <p className="login-security-note"><ShieldCheck size={15} /> Secure administrator access</p>
+      </section>
+      <p className="login-footer">DormCare · Dormitory Maintenance System</p>
+    </main>
+  )
+}
+
+function App() {
+  const [session, setSession] = useState(() => {
+    try {
+      const token = sessionStorage.getItem(AUTH_TOKEN_KEY)
+      const user = JSON.parse(sessionStorage.getItem(AUTH_USER_KEY) || 'null')
+      if (token && user?.role === 'Admin') return { token, user }
+    } catch {
+      // Start signed out if stored session data is malformed or unavailable.
+    }
+    return null
+  })
+
+  function handleLogin(token, user) {
+    sessionStorage.setItem(AUTH_TOKEN_KEY, token)
+    sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(user))
+    setSession({ token, user })
+  }
+
+  function handleLogout() {
+    sessionStorage.removeItem(AUTH_TOKEN_KEY)
+    sessionStorage.removeItem(AUTH_USER_KEY)
+    setSession(null)
+  }
+
+  if (!session) return <LoginPage onLogin={handleLogin} />
+
+  return (
+    <DashboardApp
+      authToken={session.token}
+      user={session.user}
+      onLogout={handleLogout}
+    />
   )
 }
 
