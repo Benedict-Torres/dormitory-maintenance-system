@@ -365,6 +365,10 @@ function DashboardApp({ authToken, user, onLogout }) {
   const [residentsLoading, setResidentsLoading] = useState(false)
   const [residentsError, setResidentsError] = useState('')
   const [residentSearchTerm, setResidentSearchTerm] = useState('')
+  const [residentToDelete, setResidentToDelete] = useState(null)
+  const [deletingResident, setDeletingResident] = useState(false)
+  const [residentDeleteError, setResidentDeleteError] = useState('')
+  const [residentDeleteSuccess, setResidentDeleteSuccess] = useState('')
   const [savingRequestUpdate, setSavingRequestUpdate] = useState(false)
   const [requestUpdateError, setRequestUpdateError] = useState('')
   const [requestUpdateSuccess, setRequestUpdateSuccess] = useState('')
@@ -566,6 +570,41 @@ useEffect(() => {
 
     return matchesSearch && matchesStatus
   })
+
+  // Delete the selected resident after confirmation in the custom modal.
+  async function handleDeleteResident() {
+    const residentId = residentToDelete?.id || residentToDelete?._id
+
+    if (!residentId) {
+      setResidentDeleteError('The resident ID is unavailable.')
+      return
+    }
+
+    setDeletingResident(true)
+    setResidentDeleteError('')
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/residents/${residentId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${authToken}` },
+      })
+      const result = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Unable to delete this resident.')
+      }
+
+      setResidents((current) =>
+        current.filter((resident) => (resident.id || resident._id) !== residentId),
+      )
+      setResidentToDelete(null)
+      setResidentDeleteSuccess(result.message || 'Resident deleted successfully.')
+    } catch (error) {
+      setResidentDeleteError(error.message || 'Unable to connect to the residents API.')
+    } finally {
+      setDeletingResident(false)
+    }
+  }
 
   const filteredResidents = residents.filter((resident) => {
     const searchableText = [resident.name, resident.email]
@@ -925,11 +964,12 @@ useEffect(() => {
                 <th>EMAIL ADDRESS</th>
                 <th>ACCOUNT ROLE</th>
                 <th>DATE REGISTERED</th>
+                <th>ACTIONS</th>
               </tr>
             </thead>
             <tbody>
               {filteredResidents.map((resident) => (
-                <tr key={resident.id}>
+                <tr key={resident.id || resident._id}>
                   <td>
                     <div className="resident-cell">
                       <div className="avatar avatar-blue">
@@ -941,6 +981,20 @@ useEffect(() => {
                   <td>{resident.email || 'Email unavailable'}</td>
                   <td><StatusBadge value={resident.role || 'Resident'} /></td>
                   <td className="date-cell">{formatDate(resident.createdAt)}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="request-form-cancel"
+                      onClick={() => {
+                        setResidentDeleteError('')
+                        setResidentToDelete(resident)
+                      }}
+                      style={{ color: '#C83E3E', borderColor: '#F2C7C5', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                      aria-label={`Delete ${resident.name || resident.email}`}
+                    >
+                      <Trash2 size={15} /> Delete
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1567,6 +1621,61 @@ useEffect(() => {
     </section>
   </div>
 )}
+
+{/* Custom confirmation modal for deleting a resident account. */}
+      {residentToDelete && (
+        <div
+          className="request-modal-overlay"
+          style={{ zIndex: 2100 }}
+          onClick={() => { if (!deletingResident) { setResidentToDelete(null); setResidentDeleteError('') } }}
+        >
+          <section
+            className="request-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="resident-delete-title"
+            aria-describedby="resident-delete-description"
+            onClick={(event) => event.stopPropagation()}
+            style={{ width: 'min(100% - 32px, 440px)', maxWidth: '440px', maxHeight: 'none' }}
+          >
+            <div className="request-modal-body" style={{ padding: '28px 28px 20px', textAlign: 'center' }}>
+              <div aria-hidden="true" style={{ width: '60px', height: '60px', borderRadius: '50%', margin: '0 auto 18px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#FDE8E7', color: '#C83E3E' }}>
+                <Trash2 size={27} />
+              </div>
+              <h2 id="resident-delete-title" style={{ margin: '0 0 10px' }}>Delete Resident Account?</h2>
+              <p id="resident-delete-description" style={{ margin: 0, lineHeight: 1.6 }}>
+                Are you sure you want to delete <strong>{residentToDelete.name || residentToDelete.email || 'this resident'}</strong>? This action cannot be undone.
+              </p>
+              {residentDeleteError && (
+                <p className="request-form-message error" role="alert" style={{ marginTop: '14px' }}>
+                  {residentDeleteError}
+                </p>
+              )}
+            </div>
+            <div className="request-modal-footer" style={{ justifyContent: 'center', gap: '12px' }}>
+              <button type="button" className="request-form-cancel" onClick={() => { setResidentToDelete(null); setResidentDeleteError('') }} disabled={deletingResident}>Cancel</button>
+              <button type="button" className="request-modal-done" onClick={handleDeleteResident} disabled={deletingResident} style={{ background: '#C83E3E', borderColor: '#C83E3E', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                <Trash2 size={16} /> {deletingResident ? 'Deleting...' : 'Delete Resident'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {residentDeleteSuccess && (
+        <div className="request-modal-overlay" style={{ zIndex: 2200 }} onClick={() => setResidentDeleteSuccess('')}>
+          <section className="request-modal" role="dialog" aria-modal="true" aria-labelledby="resident-delete-success-title" onClick={(event) => event.stopPropagation()} style={{ width: 'min(100% - 32px, 420px)', maxWidth: '420px', maxHeight: 'none' }}>
+            <div className="request-modal-body" style={{ padding: '28px', textAlign: 'center' }}>
+              <CheckCircle2 size={42} color="#218653" />
+              <h2 id="resident-delete-success-title">Resident Deleted</h2>
+              <p>{residentDeleteSuccess}</p>
+            </div>
+            <div className="request-modal-footer" style={{ justifyContent: 'center' }}>
+              <button type="button" className="request-modal-done" onClick={() => setResidentDeleteSuccess('')}>Done</button>
+            </div>
+          </section>
+        </div>
+      )}
 
 {/* Custom centered confirmation modal for deleting a maintenance request. */}
       {showDeleteConfirm && selectedRequest && (
