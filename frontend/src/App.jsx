@@ -1767,7 +1767,32 @@ useEffect(() => {
 const AUTH_TOKEN_KEY = 'dormcareToken'
 const AUTH_USER_KEY = 'dormcareUser'
 
-function LoginPage({ onLogin }) {
+function WelcomePage({ onLoginClick, onRegisterClick }) {
+  return (
+    <main className="auth-screen">
+      <section className="welcome-card" aria-labelledby="welcome-title">
+        <div className="auth-brand-icon"><Building2 size={28} /></div>
+        <p className="auth-eyebrow">DORMITORY MAINTENANCE SYSTEM</p>
+        <h1 id="welcome-title">Welcome to DormCare</h1>
+        <p className="auth-description">
+          A simpler way to report dormitory issues, follow maintenance progress, and keep your living space comfortable.
+        </p>
+        <div className="welcome-actions">
+          <button className="auth-primary-button" type="button" onClick={onLoginClick}>
+            Log in <ArrowRight size={18} />
+          </button>
+          <button className="auth-secondary-button" type="button" onClick={onRegisterClick}>
+            Create resident account
+          </button>
+        </div>
+        <p className="auth-note"><ShieldCheck size={15} /> Secure access for residents and administrators</p>
+      </section>
+      <p className="auth-footer">DormCare · Dormitory Maintenance System</p>
+    </main>
+  )
+}
+
+function LoginPage({ onLogin, onRegisterClick, onWelcomeClick }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
@@ -1797,8 +1822,8 @@ function LoginPage({ onLogin }) {
       if (!result.token || !result.user) {
         throw new Error('The login response is missing the session token or user details.')
       }
-      if (result.user.role !== 'Admin') {
-        throw new Error('This dashboard is currently for administrators. Please use an Admin account.')
+      if (!['Admin', 'Resident'].includes(result.user.role)) {
+        throw new Error('This account does not have permission to access DormCare.')
       }
 
       onLogin(result.token, result.user)
@@ -1810,27 +1835,28 @@ function LoginPage({ onLogin }) {
   }
 
   return (
-    <main className="login-screen">
-      <section className="login-card" aria-labelledby="login-title">
-        <div className="login-brand-icon"><Building2 size={27} /></div>
-        <p className="login-eyebrow">DORMITORY MAINTENANCE SYSTEM</p>
-        <h1 id="login-title">Welcome to DormCare</h1>
-        <p className="login-description">Sign in with your administrator account to manage dormitory maintenance.</p>
+    <main className="auth-screen">
+      <section className="auth-card" aria-labelledby="login-title">
+        <button className="auth-back-link" type="button" onClick={onWelcomeClick}>← Back to welcome</button>
+        <div className="auth-brand-icon"><Building2 size={27} /></div>
+        <p className="auth-eyebrow">DORMCARE PORTAL</p>
+        <h1 id="login-title">Welcome back</h1>
+        <p className="auth-description">Sign in to submit and track maintenance requests.</p>
 
-        <form className="login-form" onSubmit={handleSubmit}>
-          <label className="login-field">
+        <form className="auth-form" onSubmit={handleSubmit}>
+          <label className="auth-field">
             Email address
             <input
               type="email"
               name="email"
               autoComplete="username"
-              placeholder="admin@example.com"
+              placeholder="you@example.com"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
             />
           </label>
-          <label className="login-field">
+          <label className="auth-field">
             Password
             <input
               type="password"
@@ -1842,15 +1868,179 @@ function LoginPage({ onLogin }) {
               required
             />
           </label>
-          {errorMessage && <p className="login-error" role="alert">{errorMessage}</p>}
-          <button className="login-submit" type="submit" disabled={submitting}>
-            {submitting ? 'Signing in…' : 'Sign in'}
+          {errorMessage && <p className="auth-error" role="alert">{errorMessage}</p>}
+          <button className="auth-primary-button" type="submit" disabled={submitting}>
+            {submitting ? 'Signing in…' : 'Log in'}
             {!submitting && <ArrowRight size={18} />}
           </button>
         </form>
-        <p className="login-security-note"><ShieldCheck size={15} /> Secure administrator access</p>
+        <p className="auth-switch">Don't have an account? <button type="button" onClick={onRegisterClick}>Register</button></p>
+        <p className="auth-note"><ShieldCheck size={15} /> Your account is protected by secure authentication</p>
       </section>
-      <p className="login-footer">DormCare · Dormitory Maintenance System</p>
+      <p className="auth-footer">DormCare · Dormitory Maintenance System</p>
+    </main>
+  )
+}
+
+function RegisterPage({ onLoginClick, onWelcomeClick }) {
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  async function handleSubmit(event) {
+    event.preventDefault()
+    setErrorMessage('')
+    setSuccessMessage('')
+
+    if (name.trim().length < 2) {
+      setErrorMessage('Please enter your full name.')
+      return
+    }
+    if (password.length < 8) {
+      setErrorMessage('Your password must be at least 8 characters long.')
+      return
+    }
+    if (password !== confirmPassword) {
+      setErrorMessage('The passwords do not match.')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), password }),
+      })
+      const result = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Unable to create your account.')
+      }
+
+      setSuccessMessage('Your Resident account has been created. You can now log in.')
+      setName('')
+      setEmail('')
+      setPassword('')
+      setConfirmPassword('')
+    } catch (error) {
+      setErrorMessage(error.message || 'Unable to connect to DormCare. Check that the backend is running.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <main className="auth-screen">
+      <section className="auth-card" aria-labelledby="register-title">
+        <button className="auth-back-link" type="button" onClick={onWelcomeClick}>← Back to welcome</button>
+        <div className="auth-brand-icon"><Building2 size={27} /></div>
+        <p className="auth-eyebrow">JOIN DORMCARE</p>
+        <h1 id="register-title">Create your account</h1>
+        <p className="auth-description">Register as a resident to report and track dormitory maintenance issues.</p>
+
+        <form className="auth-form" onSubmit={handleSubmit}>
+          <label className="auth-field">
+            Full name
+            <input type="text" name="name" autoComplete="name" placeholder="Your full name" value={name} onChange={(event) => setName(event.target.value)} maxLength={100} required />
+          </label>
+          <label className="auth-field">
+            Email address
+            <input type="email" name="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required />
+          </label>
+          <label className="auth-field">
+            Password <span className="auth-field-hint">At least 8 characters</span>
+            <input type="password" name="password" autoComplete="new-password" placeholder="Create a password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required />
+          </label>
+          <label className="auth-field">
+            Confirm password
+            <input type="password" name="confirmPassword" autoComplete="new-password" placeholder="Enter your password again" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={8} required />
+          </label>
+          {errorMessage && <p className="auth-error" role="alert">{errorMessage}</p>}
+          {successMessage && <p className="auth-success" role="status">{successMessage}</p>}
+          <button className="auth-primary-button" type="submit" disabled={submitting}>
+            {submitting ? 'Creating account…' : 'Register as Resident'}
+            {!submitting && <ArrowRight size={18} />}
+          </button>
+        </form>
+        <p className="auth-switch">Already have an account? <button type="button" onClick={onLoginClick}>Log in</button></p>
+        <p className="auth-note"><ShieldCheck size={15} /> Public registration creates Resident accounts only</p>
+      </section>
+      <p className="auth-footer">DormCare · Dormitory Maintenance System</p>
+    </main>
+  )
+}
+
+function ResidentDashboard({ authToken, user, onLogout }) {
+  const [requests, setRequests] = useState([])
+  const [summary, setSummary] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [errorMessage, setErrorMessage] = useState('')
+  const [showRequestForm, setShowRequestForm] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    async function loadResidentRequests() {
+      setLoading(true)
+      setErrorMessage('')
+      try {
+        const headers = { Authorization: `Bearer ${authToken}` }
+        const [requestsResponse, summaryResponse] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/requests?limit=100`, { headers, signal: controller.signal }),
+          fetch(`${API_BASE_URL}/api/requests/summary`, { headers, signal: controller.signal }),
+        ])
+        const requestsData = await requestsResponse.json().catch(() => ({}))
+        const summaryData = await summaryResponse.json().catch(() => ({}))
+        if (!requestsResponse.ok) throw new Error(requestsData.message || 'Unable to load your maintenance requests.')
+        if (!summaryResponse.ok) throw new Error(summaryData.message || 'Unable to load your request summary.')
+        setRequests(Array.isArray(requestsData.requests) ? requestsData.requests : [])
+        setSummary(summaryData)
+      } catch (error) {
+        if (error.name !== 'AbortError') setErrorMessage(error.message || 'Unable to connect to DormCare.')
+      } finally {
+        if (!controller.signal.aborted) setLoading(false)
+      }
+    }
+
+    loadResidentRequests()
+    return () => controller.abort()
+  }, [authToken, refreshKey])
+
+  return (
+    <main className="resident-screen">
+      <header className="resident-topbar">
+        <div className="resident-brand"><span className="resident-brand-icon"><Building2 size={22} /></span><span><strong>DormCare</strong><small>Resident Portal</small></span></div>
+        <button className="resident-logout" type="button" onClick={onLogout}><LogOut size={16} /> Log out</button>
+      </header>
+      <div className="resident-content">
+        <section className="resident-welcome-row">
+          <div><p className="auth-eyebrow">RESIDENT WORKSPACE</p><h1>Hello, {user.name || 'Resident'}! 👋</h1><p>Submit a maintenance issue and keep track of its progress.</p></div>
+          <button className="auth-primary-button resident-new-request" type="button" onClick={() => setShowRequestForm(true)}><Plus size={18} /> New Request</button>
+        </section>
+        <section className="resident-stats" aria-label="Your maintenance request summary">
+          {[['Total Requests', summary?.totalRequests ?? '—'], ['Pending', summary?.pendingRequests ?? '—'], ['In Progress', summary?.inProgressRequests ?? '—'], ['Completed', summary?.completedRequests ?? '—']].map(([label, value]) => (
+            <article className="resident-stat-card" key={label}><span>{label}</span><strong>{value}</strong></article>
+          ))}
+        </section>
+        <section className="resident-requests-card">
+          <div className="resident-card-heading"><div><h2>My Maintenance Requests</h2><p>Only requests submitted from your account appear here.</p></div></div>
+          {errorMessage && <p className="auth-error resident-inline-message" role="alert">{errorMessage}</p>}
+          {loading ? <p className="resident-empty">Loading your requests…</p> : requests.length === 0 ? (
+            <div className="resident-empty"><ClipboardList size={30} /><strong>No requests yet</strong><span>When you submit a maintenance issue, it will appear here.</span><button type="button" className="auth-secondary-button" onClick={() => setShowRequestForm(true)}>Submit your first request</button></div>
+          ) : (
+            <div className="resident-table-wrap"><table className="resident-table"><thead><tr><th>Request</th><th>Location</th><th>Category</th><th>Status</th><th>Date submitted</th></tr></thead><tbody>
+              {requests.map((request) => <tr key={request._id || request.id}><td><strong>{request.title}</strong><small>{request.description}</small></td><td>{request.building || '—'}<small>Room {request.roomNumber || '—'}</small></td><td>{request.category || '—'}</td><td><StatusBadge value={request.status} /></td><td>{formatDate(request.createdAt)}</td></tr>)}
+            </tbody></table></div>
+          )}
+        </section>
+      </div>
+      {showRequestForm && <RequestFormModal authToken={authToken} onClose={() => setShowRequestForm(false)} onCreated={() => setRefreshKey((current) => current + 1)} />}
     </main>
   )
 }
@@ -1860,12 +2050,13 @@ function App() {
     try {
       const token = sessionStorage.getItem(AUTH_TOKEN_KEY)
       const user = JSON.parse(sessionStorage.getItem(AUTH_USER_KEY) || 'null')
-      if (token && user?.role === 'Admin') return { token, user }
+      if (token && ['Admin', 'Resident'].includes(user?.role)) return { token, user }
     } catch {
       // Start signed out if stored session data is malformed or unavailable.
     }
     return null
   })
+  const [page, setPage] = useState('welcome')
 
   function handleLogin(token, user) {
     sessionStorage.setItem(AUTH_TOKEN_KEY, token)
@@ -1877,17 +2068,24 @@ function App() {
     sessionStorage.removeItem(AUTH_TOKEN_KEY)
     sessionStorage.removeItem(AUTH_USER_KEY)
     setSession(null)
+    setPage('welcome')
   }
 
-  if (!session) return <LoginPage onLogin={handleLogin} />
+  if (!session) {
+    if (page === 'login') {
+      return <LoginPage onLogin={handleLogin} onRegisterClick={() => setPage('register')} onWelcomeClick={() => setPage('welcome')} />
+    }
+    if (page === 'register') {
+      return <RegisterPage onLoginClick={() => setPage('login')} onWelcomeClick={() => setPage('welcome')} />
+    }
+    return <WelcomePage onLoginClick={() => setPage('login')} onRegisterClick={() => setPage('register')} />
+  }
 
-  return (
-    <DashboardApp
-      authToken={session.token}
-      user={session.user}
-      onLogout={handleLogout}
-    />
-  )
+  if (session.user.role === 'Resident') {
+    return <ResidentDashboard authToken={session.token} user={session.user} onLogout={handleLogout} />
+  }
+
+  return <DashboardApp authToken={session.token} user={session.user} onLogout={handleLogout} />
 }
 
 export default App

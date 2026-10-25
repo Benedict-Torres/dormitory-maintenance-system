@@ -111,7 +111,30 @@ app.get("/api/test", (req, res) => {
 // Add the new POST endpoint below the test endpoint
 app.post("/api/requests", authenticateToken, async (req, res) => {
   try {
-    const request = await MaintenanceRequest.create(req.body);
+    const { title, description, category, building, roomNumber, priority } = req.body || {};
+
+    // Build request data from permitted fields only; never trust client-supplied ownership or status.
+    const requestData = {
+      title,
+      description,
+      category,
+      building,
+      roomNumber,
+      priority,
+      status: "Pending",
+      activityHistory: [{
+        action: "Request Submitted",
+        details: "Maintenance request submitted through DormCare.",
+        timestamp: new Date(),
+      }],
+    };
+
+    // The authenticated token determines ownership for residents.
+    if (req.user.role === "Resident") {
+      requestData.residentId = req.user.userId;
+    }
+
+    const request = await MaintenanceRequest.create(requestData);
 
     return res.status(201).json({
       message: "Maintenance request created successfully!",
@@ -147,6 +170,11 @@ app.get("/api/requests", authenticateToken, async (req, res) => {
     const skip = (page - 1) * limit;
 
     const filters = {};
+
+    // Residents can only retrieve maintenance requests linked to their own account.
+    if (req.user.role === "Resident") {
+      filters.residentId = req.user.userId;
+    }
 
     if (status) {
       filters.status = status;
@@ -429,16 +457,21 @@ app.patch("/api/requests/:id/status", authenticateToken, requireRoles("Admin", "
 // Retrieve summary counts for the maintenance dashboard.
 app.get("/api/requests/summary", authenticateToken, async (req, res) => {
   try {
+    // Return global statistics to Admins and personal statistics to Residents.
+    const ownerFilter = req.user.role === "Resident"
+      ? { residentId: req.user.userId }
+      : {};
+
     const [
       totalRequests,
       pendingRequests,
       inProgressRequests,
       completedRequests,
     ] = await Promise.all([
-      MaintenanceRequest.countDocuments(),
-      MaintenanceRequest.countDocuments({ status: "Pending" }),
-      MaintenanceRequest.countDocuments({ status: "In Progress" }),
-      MaintenanceRequest.countDocuments({ status: "Completed" }),
+      MaintenanceRequest.countDocuments(ownerFilter),
+      MaintenanceRequest.countDocuments({ ...ownerFilter, status: "Pending" }),
+      MaintenanceRequest.countDocuments({ ...ownerFilter, status: "In Progress" }),
+      MaintenanceRequest.countDocuments({ ...ownerFilter, status: "Completed" }),
     ]);
 
     return res.status(200).json({
@@ -464,7 +497,7 @@ app.get("/api/requests/:id", authenticateToken,async (req, res) => {
   try {
     const request = await MaintenanceRequest.findById(req.params.id);
 
-    if (!request) {
+    if (!request || (req.user.role === "Resident" && String(request.residentId || "") !== String(req.user.userId))) {
       return res.status(404).json({
         message: "Maintenance request not found.",
       });
