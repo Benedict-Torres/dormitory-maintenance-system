@@ -62,6 +62,14 @@ const maintenanceRequestSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
+
+    residentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Resident",
+      default: null,
+      required: true,
+      trim: true,
+    },
     
 // Store a history of important events associated with the maintenance request.
     activityHistory: [
