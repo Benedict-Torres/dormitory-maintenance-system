@@ -25,6 +25,22 @@ const userSchema = new mongoose.Schema(
       enum: ["Resident", "Admin", "Maintenance"],
       default: "Resident",
     },
+    // Maintenance employees can be assigned only to categories they support.
+    maintenanceCategories: {
+      type: [
+        {
+          type: String,
+          enum: [
+            "Plumbing",
+            "Electrical",
+            "Carpentry",
+            "Cleaning",
+            "Other",
+         ],
+        },
+      ],
+      default: [],
+    },
   },
   {
     timestamps: true,
