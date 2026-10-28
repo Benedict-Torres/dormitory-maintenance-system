@@ -374,47 +374,58 @@ function DashboardApp({ authToken, user, onLogout }) {
   const [requestUpdateSuccess, setRequestUpdateSuccess] = useState('')
 
 // Load employee names, roles, and qualified maintenance categories.
-useEffect(() => {
-  const controller = new AbortController()
 
-  async function loadMaintenanceTeam() {
-    setTeamLoading(true)
-    setTeamError('')
+  // Load the maintenance team only for Admin users.
+  useEffect(() => {
 
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/maintenance-team`,
-        { headers: { Authorization: `Bearer ${authToken}` }, signal: controller.signal },
-      )
+    const controller = new AbortController()
 
-      const result = await response.json()
+    async function loadMaintenanceTeam() {
+      setTeamLoading(true)
+      setTeamError('')
 
-      if (!response.ok) {
-        throw new Error(
-          result.message || 'Unable to load the maintenance team.',
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/maintenance-team`,
+          {
+            headers: { Authorization: `Bearer ${authToken}` },
+            signal: controller.signal,
+          },
         )
-      }
 
-      if (!Array.isArray(result.employees)) {
-        throw new Error('The maintenance team response has an unexpected format.')
-      }
+        const result = await response.json()
 
-      setMaintenanceTeam(result.employees)
-    } catch (error) {
-      if (error.name !== 'AbortError') {
-        setTeamError(error.message || 'Unable to connect to the maintenance API.')
-      }
-    } finally {
-      if (!controller.signal.aborted) {
-        setTeamLoading(false)
+        if (!response.ok) {
+          throw new Error(
+            result.message || 'Unable to load the maintenance team.',
+          )
+        }
+
+        if (!Array.isArray(result.employees)) {
+          throw new Error(
+            'The maintenance team response has an unexpected format.',
+          )
+        }
+
+        setMaintenanceTeam(result.employees)
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          setTeamError(
+            error.message || 'Unable to connect to the maintenance API.',
+          )
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setTeamLoading(false)
+        }
       }
     }
-  }
 
-  loadMaintenanceTeam()
+    loadMaintenanceTeam()
 
-  return () => controller.abort()
-}, [authToken])
+    return () => controller.abort()
+  }, [authToken, user?.role])
+
   // Load residents only when the Residents page is opened.
   useEffect(() => {
     if (activeNav !== 'Residents') return
@@ -815,12 +826,14 @@ useEffect(() => {
           <span className="sidebar-label">WORKSPACE</span>
           <nav className="sidebar-nav" aria-label="Main navigation">
             {[
-              { label: 'Dashboard', icon: LayoutDashboard },
-              { label: 'Maintenance Requests', icon: ClipboardList },
-              { label: 'Maintenance Team', icon: Wrench },
-              { label: 'Submit a Request', icon: Plus },
-              { label: 'Residents', icon: Users },
-            ].map(({ label, icon: Icon }) => (
+              { label: 'Dashboard', icon: LayoutDashboard, roles: ['Admin', 'Maintenance'] },
+              { label: 'Maintenance Requests', icon: ClipboardList, roles: ['Admin', 'Maintenance'] },
+              { label: 'Maintenance Team', icon: Wrench, roles: ['Admin'] },
+              { label: 'Submit a Request', icon: Plus, roles: ['Admin'] },
+              { label: 'Residents', icon: Users, roles: ['Admin'] },
+            ]
+            .filter(({ roles }) => roles.includes(user?.role))
+            .map(({ label, icon: Icon, }) => (
               <button
                 key={label}
                 className={`nav-item ${activeNav === label ? 'nav-item-active' : ''}`}
@@ -1822,7 +1835,7 @@ function LoginPage({ onLogin, onRegisterClick, onWelcomeClick }) {
       if (!result.token || !result.user) {
         throw new Error('The login response is missing the session token or user details.')
       }
-      if (!['Admin', 'Resident'].includes(result.user.role)) {
+      if (!['Admin', 'Resident', 'Maintenance'].includes(result.user.role)) {
         throw new Error('This account does not have permission to access DormCare.')
       }
 
@@ -2050,7 +2063,12 @@ function App() {
     try {
       const token = sessionStorage.getItem(AUTH_TOKEN_KEY)
       const user = JSON.parse(sessionStorage.getItem(AUTH_USER_KEY) || 'null')
-      if (token && ['Admin', 'Resident'].includes(user?.role)) return { token, user }
+      if (
+        token &&
+        ['Admin', 'Maintenance', 'Resident',].includes(user?.role)
+      ) {
+        return { token, user }
+      }
     } catch {
       // Start signed out if stored session data is malformed or unavailable.
     }

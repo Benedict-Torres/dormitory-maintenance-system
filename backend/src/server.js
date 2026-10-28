@@ -154,9 +154,13 @@ app.post("/api/requests", authenticateToken, async (req, res) => {
     };
 
     // The authenticated token determines ownership for residents.
-    if (req.user.role === "Resident") {
-      requestData.residentId = req.user.userId;
-    }
+    if (req.user.role !== "Resident") {
+  return res.status(403).json({
+    message: "Only residents can submit maintenance requests.",
+  });
+  }
+
+  requestData.residentId = req.user.userId;
 
     const request = await MaintenanceRequest.create(requestData);
 
@@ -281,22 +285,27 @@ app.delete("/api/requests/:id", authenticateToken, requireAdmin, async (req, res
 
 
 /* Assign a request only to a qualified maintenance employee account. */
-app.patch("/api/requests/:id/assign", authenticateToken, requireAdmin, async (req, res) => {
+app.patch(
+  "/api/requests/:id/assign",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
     try {
-      const { assignedEmployeeId } = req.body;
+      const { assignedTo } = req.body;
 
       // Require the MongoDB ID of a maintenance employee account.
       if (
-        typeof assignedEmployeeId !== "string" ||
-        !assignedEmployeeId.trim()
+        typeof assignedTo !== "string" ||
+        !assignedTo.trim()
       ) {
         return res.status(400).json({
           message: "A valid maintenance employee ID is required.",
         });
       }
 
-      // Retrieve the request before checking the employee's qualifications.
-      const request = await MaintenanceRequest.findById(req.params.id);
+      const request = await MaintenanceRequest.findById(
+        req.params.id
+      );
 
       if (!request) {
         return res.status(404).json({
@@ -304,9 +313,17 @@ app.patch("/api/requests/:id/assign", authenticateToken, requireAdmin, async (re
         });
       }
 
-      // Only accounts with the Maintenance role can receive assignments.
+      // Do not save a request that has no resident owner.
+      if (!request.residentId) {
+        return res.status(400).json({
+          message:
+            "This request has no resident ID. Correct the existing request before assigning it.",
+        });
+      }
+
+      // Find an actual Maintenance user account.
       const employee = await User.findOne({
-        _id: assignedEmployeeId.trim(),
+        _id: assignedTo.trim(),
         role: "Maintenance",
       }).select("name role maintenanceCategories");
 
@@ -317,7 +334,7 @@ app.patch("/api/requests/:id/assign", authenticateToken, requireAdmin, async (re
         });
       }
 
-      // Ensure the employee supports the request's maintenance category.
+      // Verify that the employee is qualified for this category.
       const categories = employee.maintenanceCategories || [];
 
       if (!categories.includes(request.category)) {
@@ -326,18 +343,16 @@ app.patch("/api/requests/:id/assign", authenticateToken, requireAdmin, async (re
         });
       }
 
-      // Save the employee's account ID and display name.
-      const previousAssignee = request.assignedTo;
-      const newAssignee = employee.name;
+      const previousAssignee =
+        request.assignedTo || "Unassigned";
 
+      // Store the employee ID separately from the display name.
       request.assignedEmployeeId = employee._id;
-      request.assignedTo = newAssignee;
+      request.assignedTo = employee.name;
 
       request.activityHistory.push({
         action: "Request Assigned",
-        details: previousAssignee
-          ? `Assignment changed from ${previousAssignee} to ${newAssignee}.`
-          : `Request assigned to ${newAssignee}.`,
+        details: `Assignment changed from ${previousAssignee} to ${employee.name}.`,
         timestamp: new Date(),
       });
 
@@ -348,13 +363,20 @@ app.patch("/api/requests/:id/assign", authenticateToken, requireAdmin, async (re
         request,
       });
     } catch (error) {
-      if (error.name === "CastError") {
+      if (
+        error.name === "CastError" ||
+        error.name === "ValidationError"
+      ) {
         return res.status(400).json({
-          message: "Invalid maintenance request or employee ID.",
+          message: "The request could not be saved.",
+          errors: error.message,
         });
       }
 
-      console.error("Error assigning maintenance request:", error.message);
+      console.error(
+        "Error assigning maintenance request:",
+        error
+      );
 
       return res.status(500).json({
         message: "Failed to assign maintenance request.",
@@ -362,6 +384,7 @@ app.patch("/api/requests/:id/assign", authenticateToken, requireAdmin, async (re
     }
   }
 );
+
 
  // Return a safe directory of resident accounts without password hashes.
 app.get("/api/residents", authenticateToken, requireAdmin, async (req, res) => {
