@@ -28,6 +28,14 @@ const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
 ).replace(/\/$/, '')
 
+const maintenanceCategories = [
+  'Plumbing',
+  'Electrical',
+  'Carpentry',
+  'Cleaning',
+  'Other',
+]
+
 // Define the summary cards and their matching icons and descriptions.
 const summaryCardConfig = [
   {
@@ -328,6 +336,209 @@ function RequestFormModal({ onClose, onCreated, authToken }) {
   )
 }
 
+function CreateEmployeeModal({ onClose, onCreated, authToken }) {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    category: '',
+  })
+
+  const [submitting, setSubmitting] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+
+  function handleChange(event) {
+    const { name, value } = event.target
+
+    setFormData((current) => ({
+      ...current,
+      [name]: value,
+    }))
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault()
+    setErrorMessage('')
+
+    const cleanedData = {
+      name: formData.name.trim(),
+      email: formData.email.trim(),
+      password: formData.password,
+      category: formData.category,
+    }
+
+    if (
+      !cleanedData.name ||
+      !cleanedData.email ||
+      !cleanedData.password ||
+      !cleanedData.category
+    ) {
+      setErrorMessage('Please complete all required fields.')
+      return
+    }
+
+    if (cleanedData.password.length < 8) {
+      setErrorMessage('Password must contain at least 8 characters.')
+      return
+    }
+
+    setSubmitting(true)
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/maintenance-team`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authToken}`,
+          },
+          body: JSON.stringify(cleanedData),
+        },
+      )
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(
+          result.message || 'Unable to create employee account.',
+        )
+      }
+
+      if (typeof onCreated === 'function') {
+      onCreated(result.employee)
+      }
+
+      onClose()
+
+    } catch (error) {
+      setErrorMessage(
+        error.message || 'Unable to connect to the maintenance API.',
+      )
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div
+      className="request-modal-overlay"
+      onClick={onClose}
+    >
+      <section
+        className="request-modal request-form-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="employee-form-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="request-modal-header">
+          <div>
+            <p className="request-modal-eyebrow">DORMCARE PORTAL</p>
+            <h2 id="employee-form-title">
+              Create Maintenance Employee
+            </h2>
+            <p className="request-meta">
+              Create an employee account and assign a maintenance category.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            className="request-modal-close"
+            onClick={onClose}
+            aria-label="Close employee form"
+          >
+            ×
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="request-form-body">
+            <label className="request-form-field">
+              Employee name *
+              <input
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
+                required
+                placeholder="Enter employee full name"
+              />
+            </label>
+
+            <label className="request-form-field">
+              Email address *
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                required
+                placeholder="employee@example.com"
+              />
+            </label>
+
+            <label className="request-form-field">
+              Password *
+              <input
+                type="password"
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
+                minLength={8}
+                required
+                placeholder="At least 8 characters"
+              />
+            </label>
+
+            <label className="request-form-field">
+              Maintenance category *
+              <select
+                name="category"
+                value={formData.category}
+                onChange={handleChange}
+                required
+              >
+                <option value="">Select category</option>
+                {maintenanceCategories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {errorMessage && (
+              <p className="request-form-message error" role="alert">
+                {errorMessage}
+              </p>
+            )}
+          </div>
+
+          <div className="request-modal-footer request-form-footer">
+            <button
+              type="button"
+              className="request-form-cancel"
+              onClick={onClose}
+              disabled={submitting}
+            >
+              Cancel
+            </button>
+
+            <button
+              type="submit"
+              className="request-modal-done"
+              disabled={submitting}
+            >
+              {submitting ? 'Creating...' : 'Create Employee'}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  )
+}
+
 function DashboardApp({ authToken, user, onLogout }) {
   const [refreshKey, setRefreshKey] = useState(0)
   const [searchTerm, setSearchTerm] = useState('')
@@ -359,6 +570,8 @@ function DashboardApp({ authToken, user, onLogout }) {
   const [maintenanceTeam, setMaintenanceTeam] = useState([])
   const [teamLoading, setTeamLoading] = useState(true)
   const [teamError, setTeamError] = useState('')
+  const [showCreateEmployee, setShowCreateEmployee] = useState(false)
+  const [showEmployeeCreated, setShowEmployeeCreated] = useState(false)
 
   // Store resident accounts returned by the residents directory API.
   const [residents, setResidents] = useState([])
@@ -630,7 +843,23 @@ function DashboardApp({ authToken, user, onLogout }) {
     setActiveNav(label)
     setSidebarOpen(false)
   }
-  
+
+  function handleEmployeeCreated(newEmployee) {
+    if (newEmployee) {
+      setMaintenanceTeam((currentTeam) => {
+        const alreadyExists = currentTeam.some(
+          (employee) => employee.id === newEmployee.id,
+        )
+
+        if (alreadyExists) {
+          return currentTeam
+        }
+
+        return [...currentTeam, newEmployee]
+      })
+    }
+    setShowEmployeeCreated(true)
+  }
   // Open the edit form with the selected request's current values.
   function beginEditingRequest() {
     setEditFormData({
@@ -1039,12 +1268,16 @@ function DashboardApp({ authToken, user, onLogout }) {
       <div>
         <h2>Maintenance Team</h2>
         <p>View employees and the maintenance categories they handle.</p>
+        <div className="maintenance-team-actions">
+          <button type="button" className="request-modal-done" onClick={() => setShowCreateEmployee(true)}>
+            + Create Employee
+          </button>
+        </div>
       </div>
       <span className="sample-note">
         {maintenanceTeam.length} team members
       </span>
     </div>
-
     {teamLoading && (
       <div className="empty-state" role="status">
         <strong>Loading maintenance team...</strong>
@@ -1083,6 +1316,9 @@ function DashboardApp({ authToken, user, onLogout }) {
               </div>
               <div>
                 <h3>{employee.name}</h3>
+                <p className="maintenance-team-email">
+                  {employee.email || 'Email unavailable'}
+                </p>
                 <p>{employee.role}</p>
               </div>
             </div>
@@ -1097,6 +1333,44 @@ function DashboardApp({ authToken, user, onLogout }) {
             </div>
           </article>
         ))}
+      </div>
+    )}
+    {showCreateEmployee && (
+      <CreateEmployeeModal
+        authToken={authToken}
+        onClose={() => setShowCreateEmployee(false)}
+        onCreated={handleEmployeeCreated}
+      />
+    )}
+    {showEmployeeCreated && (
+      <div className="request-modal-overlay" 
+      onClick={() => setShowEmployeeCreated(false)}
+      >
+        <section className="request-modal employee-success-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="employee-success-title"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="employee-success-content">
+            <div className="employee-success-icon">
+              <span>✔️</span>
+            </div>
+
+            <h2 id="employee-success-title">Maintenance Employee Account Successfully Created</h2>
+
+            <p>The new employee has been added to your the maintenance team.</p>
+
+            <button
+              type="button"
+              className="request-modal-done"
+              onClick={() => setShowEmployeeCreated(false)}
+            >
+              Done
+            </button>
+          </div>
+        </section>
+      
       </div>
     )}
   </section>

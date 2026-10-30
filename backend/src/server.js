@@ -88,7 +88,7 @@ app.get(
   async (req, res) => {
     try {
       const employees = await User.find({ role: "Maintenance" })
-        .select("name role maintenanceCategories createdAt")
+        .select("name email role maintenanceCategories createdAt")
         .sort({ createdAt: -1 })
         .lean();
 
@@ -97,6 +97,7 @@ app.get(
         employees: employees.map((employee) => ({
           id: employee._id.toString(),
           name: employee.name,
+          email: employee.email,
           role: employee.role,
           categories: employee.maintenanceCategories || [],
           createdAt: employee.createdAt,
@@ -127,6 +128,97 @@ const startServer = async () => {
     process.exit(1);
   }
 };
+
+// Allow Admin users to create Maintenance employee accounts.
+app.post(
+  "/api/maintenance-team",
+  authenticateToken,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const { name, email, password, category } = req.body || {};
+
+      const allowedCategories = [
+        "Plumbing",
+        "Electrical",
+        "Carpentry",
+        "Cleaning",
+        "Other",
+      ];
+
+      // Validate the required employee information.
+      if (
+        typeof name !== "string" ||
+        !name.trim() ||
+        typeof email !== "string" ||
+        !email.trim() ||
+        typeof password !== "string" ||
+        password.length < 8 ||
+        typeof category !== "string" ||
+        !allowedCategories.includes(category)
+      ) {
+        return res.status(400).json({
+          message:
+            "Name, valid email, password of at least 8 characters, and a valid maintenance category are required.",
+        });
+      }
+
+      const normalizedEmail = email.trim().toLowerCase();
+
+      // Check whether the email is already registered.
+      const existingUser = await User.findOne({
+        email: normalizedEmail,
+      });
+
+      if (existingUser) {
+        return res.status(409).json({
+          message: "An account with this email already exists.",
+        });
+      }
+
+      // Hash the employee's password before saving.
+      const hashedPassword = await bcrypt.hash(password, 12);
+
+      // Create the account with a Maintenance role.
+      const employee = await User.create({
+        name: name.trim(),
+        email: normalizedEmail,
+        password: hashedPassword,
+        role: "Maintenance",
+        maintenanceCategories: [category],
+      });
+
+      // Return safe employee information without the password hash.
+      return res.status(201).json({
+        message: "Maintenance employee account created successfully.",
+        employee: {
+          id: employee._id,
+          name: employee.name,
+          email: employee.email,
+          role: employee.role,
+          categories: employee.maintenanceCategories,
+          createdAt: employee.createdAt,
+        },
+      });
+    } catch (error) {
+      // Handle duplicate email errors.
+      if (error.code === 11000) {
+        return res.status(409).json({
+          message: "An account with this email already exists.",
+        });
+      }
+
+      console.error(
+        "Error creating maintenance employee:",
+        error.message
+      );
+
+      return res.status(500).json({
+        message: "Failed to create maintenance employee account.",
+      });
+    }
+  }
+);
 
 app.get("/api/test", (req, res) => {
   res.json({ message: "Dormitory Maintenance API is working!" });
